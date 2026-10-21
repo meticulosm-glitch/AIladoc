@@ -1,8 +1,9 @@
 # Valori di default per il chart AIladoc.
 
 image:
-  # Immagine costruita dal Dockerfile del progetto e pubblicata sul vostro registry
-  repository: registry.example.com/ailadoc
+  # Immagine costruita da docker/Dockerfile e pubblicata su Docker Hub dal workflow
+  # .github/workflows/docker-publish.yml (tag = tag git)
+  repository: meticulo/ailadoc
   # Default: appVersion del Chart
   tag: ""
   pullPolicy: IfNotPresent

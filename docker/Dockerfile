@@ -1,8 +1,12 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-slim-bookworm
 
+# Immagine di AIladoc. Il contesto di build è la RADICE del progetto:
+#   docker build -f docker/Dockerfile -t meticulo/ailadoc:dev .
+# Le esclusioni dal contesto sono in docker/Dockerfile.dockerignore (letto da BuildKit).
+#
 # Anteprima di PowerPoint/Word/LibreOffice come PDF (aggiunge ~400 MB).
-# Per un'immagine leggera: docker build --build-arg OFFICE_PREVIEW=false .
+# Per un'immagine leggera: docker build -f docker/Dockerfile --build-arg OFFICE_PREVIEW=false .
 ARG OFFICE_PREVIEW=true
 ARG MERMAID_VERSION=11.4.1
 

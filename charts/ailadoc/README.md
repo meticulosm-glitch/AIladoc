@@ -4,13 +4,13 @@ Deploy di AIladoc su Kubernetes con Keycloak **esterno**.
 
 ## 1. Immagine
 
-Il chart non costruisce l'immagine: falla dal Dockerfile del progetto e pubblicala sul vostro registry.
+Il chart non costruisce l'immagine. Il workflow `.github/workflows/docker-publish.yml` la pubblica su Docker Hub come `meticulo/ailadoc:<tag>` a ogni tag git; a mano, dalla radice del progetto:
 
 ```bash
-docker build -t registry.example.com/ailadoc:0.1.0 .
-docker push registry.example.com/ailadoc:0.1.0
+docker build -f docker/Dockerfile -t meticulo/ailadoc:0.1.0 .
+docker push meticulo/ailadoc:0.1.0
 # cluster su un'architettura diversa (es. Mac ARM -> nodi amd64):
-docker buildx build --platform linux/amd64 -t registry.example.com/ailadoc:0.1.0 --push .
+docker buildx build -f docker/Dockerfile --platform linux/amd64 -t meticulo/ailadoc:0.1.0 --push .
 ```
 
 ## 2. Client Keycloak
@@ -29,7 +29,7 @@ Nel realm crea un client OpenID Connect:
 
 ```yaml
 image:
-  repository: registry.example.com/ailadoc
+  repository: meticulo/ailadoc
   tag: "0.1.0"
 
 app:
@@ -173,7 +173,7 @@ Con un LLM esterno il pod deve poter uscire verso il provider (controlla eventua
 
 | Valore | Default | Descrizione |
 |--------|---------|-------------|
-| `image.repository` / `image.tag` | `registry.example.com/ailadoc` / appVersion | immagine |
+| `image.repository` / `image.tag` | `meticulo/ailadoc` / appVersion | immagine (il tag deve esistere: è il tag git pubblicato dal workflow) |
 | `keycloak.url` | **obbligatorio** (o `secrets.existingSecret`) | URL pubblico di Keycloak → Secret |
 | `keycloak.internalUrl` | `""` | URL usato dal pod, se diverso → Secret |
 | `keycloak.realm` / `clientId` / `clientSecret` | `ailadoc` / `ailadoc` / `""` | client OIDC → Secret |

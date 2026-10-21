@@ -1,0 +1,15 @@
+# Esclusioni dal contesto di build di docker/Dockerfile (contesto = radice del progetto).
+# BuildKit usa questo file al posto di un eventuale .dockerignore nella radice.
+.git
+.github
+.env
+data
+tests
+keycloak
+charts
+docker
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.venv
+**/.DS_Store

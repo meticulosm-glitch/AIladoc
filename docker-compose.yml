@@ -1,7 +1,9 @@
 services:
   ailadoc:
-    build: .
-    image: ailadoc:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: meticulo/ailadoc:dev
     env_file:
       - path: .env
         required: false
