@@ -1,0 +1,15 @@
+services:
+  ailadoc:
+    build: .
+    image: ailadoc:latest
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8000:8000"
+    volumes:
+      # data/docs      -> i documenti (Markdown, PDF, Office, ...)
+      # data/branding  -> app-logo.svg|png e company-logo.svg|png
+      # data/ailadoc.db -> ruoli, gruppi e permessi
+      - ./data:/data
+    restart: unless-stopped

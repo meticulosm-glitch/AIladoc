@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title or settings.app_name }}{% endblock %} · {{ settings.app_name }}</title>
+  <link rel="icon" href="{{ app_logo }}">
+  <script>try{var t=localStorage.getItem('ailadoc-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+  <link rel="stylesheet" href="/static/css/app.css?v=6">
+  <link rel="stylesheet" href="/assets/pygments.css">
+  {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+{% macro nav(node) -%}
+  <ul class="nav-list">
+  {%- for c in node.children %}
+    {%- if c.is_dir %}
+    <li class="nav-dir">
+      <details {% if c.path in open_paths %}open{% endif %}>
+        <summary class="nav-item {% if c.path == current %}active{% endif %}">
+          <span class="chev">{{ icon('chevron', size=14) }}</span>
+          {{ kind_icon('folder') }}
+          {%- if c.index %}<a href="/d/{{ c.path|urlpath }}" class="nav-label">{{ c.title }}</a>
+          {%- else %}<span class="nav-label">{{ c.title }}</span>{% endif %}
+          {%- if restricted_set and c.path in restricted_set %}<span class="nav-lock" title="Accesso ristretto">{{ icon('lock', size=12) }}</span>{% endif %}
+          {%- if user and user.can_edit and c.level >= 2 %}<button type="button" class="nav-add" data-create data-parent="{{ c.path }}" title="Nuovo in «{{ c.title }}»" aria-label="Nuovo in {{ c.title }}">{{ icon('plus', size=14) }}</button>{% endif %}
+        </summary>
+        {{ nav(c) }}
+      </details>
+    </li>
+    {%- else %}
+    <li>
+      <a href="/d/{{ c.path|urlpath }}" class="nav-item nav-file {% if c.path == current %}active{% endif %}" title="{{ c.name }}">
+        <span class="chev-space"></span>{{ kind_icon(c.kind) }}<span class="nav-label">{{ c.title }}</span>
+        {%- if secret_set and c.path in secret_set %}<span class="nav-secret" title="Possibili password nel documento">{{ icon('key', size=12) }}</span>{% endif %}
+        {%- if restricted_set and c.path in restricted_set %}<span class="nav-lock" title="Accesso ristretto">{{ icon('lock', size=12) }}</span>{% endif %}
+      </a>
+    </li>
+    {%- endif %}
+  {%- endfor %}
+  </ul>
+{%- endmacro %}
+
+<header class="topbar">
+  {% if tree %}<button class="icon-btn only-mobile" type="button" data-toggle-nav aria-label="Menu">{{ icon('menu') }}</button>{% endif %}
+  <a class="brand" href="/">
+    <img src="{{ app_logo }}" alt="" class="brand-logo">
+    <span class="brand-name">{{ settings.app_name }}</span>
+  </a>
+  {% if user and user.global_level > 0 %}
+  <form class="search" action="/search" method="get" role="search">
+    {{ icon('search', size=16) }}
+    <input type="search" name="q" value="{{ q or '' }}" placeholder="Cerca nella documentazione…" aria-label="Cerca">
+  </form>
+  {% if settings.assistant_enabled %}
+  <button class="ask-btn" type="button" data-assistant-open aria-controls="assistant" title="Chiedi a {{ settings.assistant_name }} dove trovare un documento">
+    {{ icon('sparkle', size=17) }}<span class="ask-label">Chiedi a {{ settings.assistant_name }}</span>
+  </button>
+  {% endif %}
+  {% endif %}
+  <div class="topbar-right">
+    <button class="icon-btn" type="button" data-theme-toggle aria-label="Cambia tema">{{ icon('moon', 'when-light') }}{{ icon('sun', 'when-dark') }}</button>
+    {% if user %}
+    <details class="usermenu">
+      <summary class="avatar" title="{{ user.display }}">{{ user.initials }}</summary>
+      <div class="menu">
+        <div class="menu-head"><strong>{{ user.display }}</strong><span>{{ user.email or user.username }}</span>
+          {% if user.dev %}<span class="pill warn">login di sviluppo</span>{% endif %}</div>
+        <a href="/me">{{ icon('user', size=16) }} Profilo e ruoli</a>
+        {% if user.is_admin %}<a href="/admin/permissions">{{ icon('shield', size=16) }} Amministrazione</a>
+        {% if secret_count %}<a href="/admin/secrets" class="menu-warn">{{ icon('key', size=16) }} {{ secret_count }} possibili password nei documenti</a>{% endif %}{% endif %}
+        <a href="/logout">{{ icon('logout', size=16) }} Esci</a>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+</header>
+
+<div class="layout {% if not tree %}no-sidebar{% endif %}">
+  {% if tree %}
+  <aside class="sidebar" id="sidebar">
+    {% if user and user.can_edit %}
+    <button type="button" class="sidebar-new" data-create data-parent="{{ create_parent }}" title="Nuova pagina o cartella (N)">
+      {{ icon('plus', size=16) }}<span>Nuovo</span><kbd>N</kbd>
+    </button>
+    {% endif %}
+    <nav aria-label="Documenti">
+      <a href="/" class="nav-item nav-home {% if current == '' and request.url.path == '/' %}active{% endif %}">
+        <span class="chev-space"></span>{{ icon('home') }}<span class="nav-label">Home</span></a>
+      {{ nav(tree) }}
+      {% if not tree.children %}<p class="muted small nav-empty">Nessun documento visibile.</p>{% endif %}
+    </nav>
+    <div class="sidebar-foot">
+      {% if company_logo %}<img src="{{ company_logo }}" alt="{{ settings.company_name }}" class="company-logo">
+      {% elif settings.company_name %}<span class="muted small">{{ settings.company_name }}</span>{% endif %}
+    </div>
+  </aside>
+  <div class="scrim only-mobile" data-toggle-nav></div>
+  {% endif %}
+  <main class="main">
+    {% for kind, msg in flashes %}<div class="flash {{ kind }}" role="status">{{ msg }}</div>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% if user and user.global_level > 0 and settings.assistant_enabled %}
+<aside class="assistant" id="assistant" hidden aria-label="Assistente {{ settings.assistant_name }}">
+  <header class="as-head">
+    <span class="as-avatar">{{ icon('sparkle', size=18) }}</span>
+    <div class="as-title">
+      <strong>{{ settings.assistant_name }}</strong>
+      <span>{% if assistant_ai() %}Risponde usando i documenti che puoi vedere{% else %}Ti aiuta a trovare il documento giusto{% endif %}</span>
+    </div>
+    <button class="icon-btn" type="button" data-assistant-reset title="Nuova conversazione" aria-label="Nuova conversazione">{{ icon('refresh', size=17) }}</button>
+    <button class="icon-btn" type="button" data-assistant-close title="Chiudi" aria-label="Chiudi">{{ icon('x', size=18) }}</button>
+  </header>
+  <div class="as-body" data-assistant-log aria-live="polite">
+    <div class="as-welcome" data-assistant-welcome>
+      <p class="as-hello">Ciao{% if user.name %} {{ user.name.split(' ')[0] }}{% endif %}! Dimmi cosa stai cercando, anche a parole tue: trovo i documenti che ne parlano{% if assistant_ai() %} e ti riassumo cosa dicono{% endif %}.</p>
+      <div class="as-suggest">
+        {% if settings.assistant_suggestions %}
+          {% for sgg in settings.assistant_suggestions[:4] %}<button type="button" class="chip" data-ask="{{ sgg }}">{{ sgg }}</button>{% endfor %}
+        {% else %}
+          <button type="button" class="chip" data-prefill="Dove trovo ">Dove trovo…</button>
+          <button type="button" class="chip" data-prefill="Come si fa a ">Come si fa a…</button>
+          <button type="button" class="chip" data-prefill="Quale documento parla di ">Quale documento parla di…</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <form class="as-form" data-assistant-form>
+    <textarea name="q" rows="1" maxlength="{{ settings.assistant_max_question }}" placeholder="Scrivi la tua domanda…" aria-label="Domanda per {{ settings.assistant_name }}"></textarea>
+    <button class="as-send" type="submit" aria-label="Invia">{{ icon('send', size=18) }}</button>
+  </form>
+  <p class="as-foot">{% if assistant_ai() %}Le risposte sono generate da un'AI: controlla sempre le fonti citate.{% else %}Modalità ricerca: ti indico i documenti più pertinenti.{% endif %}</p>
+</aside>
+{% endif %}
+<script>window.AILADOC = {csrf: "{{ csrf }}"};</script>
+<script src="/static/js/app.js?v=3"></script>
+{% if user and user.global_level > 0 and settings.assistant_enabled %}<script src="/static/js/assistant.js?v=1"></script>{% endif %}
+{% if user and user.can_edit and tree and request.state.perms is defined %}{% include "_create.html" %}{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

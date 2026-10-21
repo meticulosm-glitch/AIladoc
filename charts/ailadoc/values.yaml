@@ -1,0 +1,197 @@
+# Valori di default per il chart AIladoc.
+
+image:
+  # Immagine costruita dal Dockerfile del progetto e pubblicata sul vostro registry
+  repository: registry.example.com/ailadoc
+  # Default: appVersion del Chart
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Con SQLite e un volume ReadWriteOnce deve restare 1 (vedi README del chart).
+replicaCount: 1
+
+app:
+  name: AIladoc
+  companyName: ""
+  # URL pubblico dell'app. Se vuoto viene ricavato dal primo host dell'ingress
+  # (https se l'ingress ha TLS).
+  baseUrl: ""
+  maxUploadMb: 100
+  sessionMaxAgeSeconds: 28800
+  # Anteprima PowerPoint/Word via LibreOffice (richiede l'immagine con OFFICE_PREVIEW=true)
+  officePreview: true
+  officePreviewTimeoutSeconds: 120
+  # Copia i documenti di esempio al primo avvio se il volume è vuoto
+  seedSampleDocs: false
+  # Ruoli Keycloak:
+  #  - adminRoles sono SEMPRE amministratori (anti lock-out)
+  #  - editorRoles/viewerRoles creano i ruoli app iniziali al primo avvio;
+  #    poi si gestiscono da Amministrazione -> Ruoli app
+  adminRoles: [ailadoc-admin]
+  editorRoles: [ailadoc-editor]
+  viewerRoles: [ailadoc-viewer]
+
+# ---------------------------------------------------------------------------
+# Keycloak esterno. url/internalUrl/realm/clientId/clientSecret finiscono nel
+# Secret dell'app (sono le stringhe di connessione), il resto nella ConfigMap.
+keycloak:
+  # URL raggiunto dal browser, senza /realms/... (es. https://sso.example.com)
+  url: ""
+  # URL raggiunto dal pod, se diverso (es. http://keycloak.keycloak.svc:8080).
+  # Keycloak deve allora avere KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true.
+  internalUrl: ""
+  realm: ailadoc
+  clientId: ailadoc
+  # Vuoto = client pubblico (si usa comunque PKCE)
+  clientSecret: ""
+  scopes: "openid profile email"
+  # Claim aggiuntivi da cui leggere ruoli/gruppi
+  rolesExtraClaims: [roles, groups]
+  verifyTls: true
+  # CA interna per il certificato di Keycloak: ConfigMap o Secret esistente con un PEM
+  caBundle:
+    configMapName: ""
+    secretName: ""
+    key: ca.crt
+
+# ---------------------------------------------------------------------------
+# Controllo password e credenziali scritte nei documenti
+secretsScan:
+  enabled: true
+  # warn: salva ma avvisa e chiede conferma | block: rifiuta finché non vengono tolte
+  policy: warn
+  rescanSeconds: 30
+
+# ---------------------------------------------------------------------------
+# Assistente AIla. baseUrl e apiKey vanno nel Secret.
+assistant:
+  enabled: true
+  name: AIla
+  # Domande d'esempio nel pannello
+  suggestions: []
+  # none (solo ricerca, nessun dato esce dal cluster) | anthropic | openai (API compatibili OpenAI)
+  llm: none
+  # Default per anthropic: claude-haiku-5-5. Obbligatorio per openai.
+  model: ""
+  # Endpoint del modello, es. http://ollama.ai.svc:11434/v1 (vuoto = default del provider)
+  baseUrl: ""
+  apiKey: ""
+  ratePerMinute: 20
+  timeoutSeconds: 60
+
+# ---------------------------------------------------------------------------
+# Secret dell'app (stringhe di connessione e credenziali).
+secrets:
+  # Secret gestito da voi (Sealed Secrets, External Secrets, Vault...). Se impostato,
+  # il chart NON crea il suo Secret e ignora keycloak.url/internalUrl/realm/clientId/
+  # clientSecret, assistant.baseUrl/apiKey e i valori qui sotto. Chiavi lette:
+  #   SECRET_KEY            (obbligatoria) firma dei cookie di sessione
+  #   KEYCLOAK_PUBLIC_URL   (obbligatoria) es. https://sso.example.com
+  #   KEYCLOAK_REALM        (obbligatoria)
+  #   OIDC_CLIENT_ID        (obbligatoria)
+  #   OIDC_CLIENT_SECRET    (se il client è confidenziale)
+  #   KEYCLOAK_INTERNAL_URL (facoltativa)
+  #   DATABASE_URL          (facoltativa, es. postgresql+psycopg://user:pass@host/db)
+  #   ASSISTANT_BASE_URL    (facoltativa)
+  #   ASSISTANT_API_KEY     (facoltativa)
+  existingSecret: ""
+  # Firma dei cookie di sessione. Vuota = generata al primo install e mantenuta negli upgrade.
+  secretKey: ""
+  # Facoltativo, es. postgresql+psycopg://user:pass@host/db (richiede psycopg nell'immagine)
+  databaseUrl: ""
+
+persistence:
+  enabled: true
+  # PVC esistente da usare al posto di quella creata dal chart
+  existingClaim: ""
+  storageClass: ""
+  accessModes: [ReadWriteOnce]
+  size: 10Gi
+  annotations: {}
+
+# Loghi da una ConfigMap (chiavi: app-logo.svg|png, company-logo.svg|png).
+# Se impostata, i loghi sono in sola lettura e non si cambiano dalla UI.
+# In alternativa caricali da Amministrazione -> Loghi (finiscono nel volume).
+branding:
+  configMapName: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: ""
+  annotations:
+    # upload fino a app.maxUploadMb (ingress-nginx)
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+  hosts:
+    - host: docs.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: docs-example-com-tls
+  #    hosts: [docs.example.com]
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automount: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# /tmp scrivibile (LibreOffice, upload temporanei)
+tmpVolume:
+  sizeLimit: 2Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    # LibreOffice può usare parecchia memoria su presentazioni grandi
+    memory: 1Gi
+
+probes:
+  startup:
+    failureThreshold: 30
+    periodSeconds: 2
+  readiness:
+    periodSeconds: 10
+  liveness:
+    periodSeconds: 20
+    failureThreshold: 3
+
+# Variabili d'ambiente aggiuntive
+extraEnv: []
+#  - name: LOG_LEVEL
+#    value: debug
+extraVolumes: []
+extraVolumeMounts: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,102 @@
+{% macro crumbs_bar(crumbs) -%}
+<nav class="crumbs" aria-label="Percorso">
+  <a href="/">{{ icon('home', size=14) }}</a>
+  {%- for label, path in crumbs %}
+  <span class="sep">/</span>
+  {%- if loop.last %}<span aria-current="page">{{ label }}</span>{% else %}<a href="/d/{{ path|urlpath }}">{{ label }}</a>{% endif %}
+  {%- endfor %}
+</nav>
+{%- endmacro %}
+
+{% macro restricted_badge(restricted, user) -%}
+{% if restricted is not none and user.is_admin %}
+<a class="pill lock" href="/admin/permissions?path={{ restricted|urlpath }}" title="Permessi definiti su: /{{ restricted }}">{{ icon('lock', size=12) }} Accesso ristretto</a>
+{% endif %}
+{%- endmacro %}
+
+{# Azioni su una cartella: nuova pagina, carica file, nuova cartella #}
+{% macro folder_actions(folder) -%}
+<button class="btn" type="button" data-create data-parent="{{ folder }}">{{ icon('plus', size=16) }} Nuovo</button>
+<button class="btn" type="button" data-open="dlg-upload">{{ icon('upload', size=16) }} Carica file</button>
+{%- endmacro %}
+
+{% macro folder_dialogs(folder, csrf) -%}
+<dialog id="dlg-upload" class="dialog">
+  <form method="post" action="/upload" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="folder" value="{{ folder }}">
+    <h3>Carica file in «{{ folder or 'Home' }}»</h3>
+    <label class="drop" data-drop>
+      {{ icon('upload', size=28) }}
+      <span>Trascina qui i file o <u>sfoglia</u></span>
+      <small class="muted">Markdown, PDF, PowerPoint, Excel, Word, immagini, CSV…</small>
+      <input type="file" name="files" multiple required>
+      <span class="drop-list" data-drop-list></span>
+    </label>
+    <label class="check"><input type="checkbox" name="replace" value="1"> Sostituisci i file con lo stesso nome</label>
+    <div class="dialog-actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn primary">Carica</button></div>
+  </form>
+</dialog>
+{%- endmacro %}
+
+{# Azioni su un elemento: sposta/rinomina, elimina #}
+{% macro item_dialogs(rel, name, tree, csrf, perms_folders) -%}
+<dialog id="dlg-move" class="dialog">
+  <form method="post" action="/move">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ rel }}">
+    <h3>Sposta o rinomina</h3>
+    <label class="field">Nome<input name="new_name" value="{{ name }}" required></label>
+    <label class="field">Cartella di destinazione
+      <select name="dest_folder">
+        {% set parent = rel.rsplit('/', 1)[0] if '/' in rel else '' %}
+        {% for f in perms_folders %}{% if f != rel and not f.startswith(rel ~ '/') %}<option value="{{ f }}" {% if f == parent %}selected{% endif %}>/{{ f }}</option>{% endif %}{% endfor %}
+      </select>
+    </label>
+    <div class="dialog-actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn primary">Salva</button></div>
+  </form>
+</dialog>
+<dialog id="dlg-delete" class="dialog">
+  <form method="post" action="/delete">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ rel }}">
+    <h3>Eliminare «{{ name }}»?</h3>
+    <p>L'operazione non si può annullare. Se è una cartella, verrà eliminato anche tutto il suo contenuto.</p>
+    <div class="dialog-actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn danger">Elimina</button></div>
+  </form>
+</dialog>
+{%- endmacro %}
+
+{% macro item_actions(rel, user) -%}
+<details class="more">
+  <summary class="btn icon-only" title="Altre azioni">⋯</summary>
+  <div class="menu">
+    <button type="button" data-open="dlg-move">{{ icon('move', size=16) }} Sposta / rinomina</button>
+    {% if user.is_admin %}<a href="/admin/permissions?path={{ rel|urlpath }}">{{ icon('shield', size=16) }} Permessi</a>{% endif %}
+    <button type="button" data-open="dlg-delete" class="danger">{{ icon('trash', size=16) }} Elimina</button>
+  </div>
+</details>
+{%- endmacro %}
+
+{# Avviso password: solo per chi può modificare il documento #}
+{% macro secrets_banner(secrets, rel, is_md, user) -%}
+{% if secrets %}
+<div class="secret-banner" role="alert">
+  <div class="secret-banner-head">
+    {{ icon('key', size=18) }}
+    <div>
+      <strong>{% if secrets|length == 1 %}Questo documento sembra contenere una password o una credenziale{% else %}Questo documento sembra contenere {{ secrets|length }} password o credenziali{% endif %}</strong>
+      <span class="muted small">Chi può leggere il documento può vederle. Spostale in un gestore di password e lascia qui solo il riferimento.</span>
+    </div>
+  </div>
+  <ul class="secret-list">
+    {% for f in secrets[:8] %}
+    <li>
+      {% if is_md %}<a href="/edit/{{ rel|urlpath }}#L{{ f.line }}">{{ f.location }}</a>{% else %}<a href="/d/{{ rel|urlpath }}{{ f.anchor }}">{{ f.location or 'Documento' }}</a>{% endif %}
+      <span class="secret-label">{{ f.label }}</span>
+      <code class="secret-ctx">{{ f.context }}</code>
+    </li>
+    {% endfor %}
+    {% if secrets|length > 8 %}<li class="muted small">…e altre {{ secrets|length - 8 }}</li>{% endif %}
+  </ul>
+  {% if user.is_admin %}<a class="small" href="/admin/secrets">Gestisci in Amministrazione →</a>{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Non trovato{% endblock %}
+{% block body_class %}{% if not tree %}centered{% endif %}{% endblock %}
+{% block content %}
+<section class="gate">
+  <div class="gate-badge">{{ icon('search', size=30) }}</div>
+  <p class="eyebrow">Errore 404</p>
+  <h1>Pagina non trovata</h1>
+  <p class="lead">Il documento che cerchi non esiste o è stato spostato.</p>
+  <div class="gate-actions"><a class="btn primary" href="/">Torna alla home</a></div>
+</section>
+{% endblock %}

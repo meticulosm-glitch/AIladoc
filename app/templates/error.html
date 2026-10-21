@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Errore di accesso{% endblock %}
+{% block body_class %}centered{% endblock %}
+{% block content %}
+<section class="gate">
+  <div class="gate-badge">{{ icon('key', size=30) }}</div>
+  <p class="eyebrow">Accesso</p>
+  <h1>Non è stato possibile completare l'accesso</h1>
+  <p class="lead">{{ message }}</p>
+  <div class="gate-actions"><a class="btn primary" href="/login">Riprova</a></div>
+</section>
+{% endblock %}

@@ -1,0 +1,9 @@
+data/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Keycloak di prova: solo per test locali
+keycloak/

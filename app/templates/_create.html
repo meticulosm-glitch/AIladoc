@@ -1,0 +1,48 @@
+{# Dialogo "Nuovo": pagine, cartelle, percorsi annidati e strutture in blocco #}
+{% set folders = all_folders(tree, request.state.perms) %}
+<dialog id="dlg-create" class="dialog create-dialog" aria-labelledby="create-title">
+  <form data-create-form autocomplete="off" novalidate>
+    <div class="create-head">
+      <h3 id="create-title">Nuovo</h3>
+      <div class="seg" role="tablist" aria-label="Cosa creare">
+        <button type="button" role="tab" data-cmode="page" class="active">{{ kind_icon('markdown', 16) }} Pagina</button>
+        <button type="button" role="tab" data-cmode="folder">{{ kind_icon('folder', 16) }} Cartella</button>
+        <button type="button" role="tab" data-cmode="tree">{{ icon('menu', size=16) }} Struttura</button>
+      </div>
+    </div>
+
+    <label class="field">Dentro
+      <select name="parent" data-cparent>
+        {% for f in folders %}<option value="{{ f }}" {% if f == create_parent %}selected{% endif %}>{{ '/' ~ f if f else 'Home (radice)' }}</option>{% endfor %}
+      </select>
+    </label>
+
+    <div data-cpanel="single">
+      <label class="field"><span data-clabel>Titolo della pagina</span>
+        <input name="title" data-ctitle placeholder="es. Procedure/Qualità/Controllo accessi" spellcheck="false">
+      </label>
+      <div class="create-preview" data-cpreview hidden></div>
+    </div>
+
+    <div data-cpanel="tree" hidden>
+      <label class="field">Una riga per elemento, il rientro indica cosa sta dentro cosa
+        <textarea name="tree" rows="9" data-ctree spellcheck="false" placeholder="Procedure/&#10;  Qualità/&#10;    Controllo accessi&#10;    Non conformità&#10;  Gestione resi&#10;Glossario"></textarea>
+      </label>
+      <p class="muted small create-help">Le righe che finiscono con <code>/</code>, o che hanno righe rientrate sotto, diventano <strong>cartelle</strong>; le altre <strong>pagine</strong>. Puoi incollare anche un elenco puntato. Le cartelle che esistono già vengono riusate.</p>
+    </div>
+
+    <label class="check" data-cindex hidden><input type="checkbox" name="index" checked> Crea anche la pagina della cartella (<code>index.md</code>)</label>
+
+    <p class="create-error" data-cerror role="alert" hidden></p>
+    <ul class="create-log" data-clog hidden></ul>
+
+    <div class="create-actions">
+      <span class="muted small create-hint" data-chint title="Invio: crea e apri · Maiusc+Invio: crea e continua"><kbd>↵</kbd> apri · <kbd>⇧↵</kbd> continua</span>
+      <button type="button" class="btn ghost" data-close>Chiudi</button>
+      <button type="button" class="btn" data-ccontinue>Crea e continua</button>
+      <button class="btn primary" type="submit" data-csubmit>Crea e apri</button>
+    </div>
+  </form>
+</dialog>
+<script>window.AILADOC_FOLDERS = {{ folders|tojson }};</script>
+<script src="/static/js/create.js?v=1" defer></script>

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Accesso negato{% endblock %}
+{% block body_class %}{% if not tree %}centered{% endif %}{% endblock %}
+{% block content %}
+<section class="gate">
+  <div class="gate-badge">{{ icon('lock', size=30) }}</div>
+  <p class="eyebrow">Errore 403</p>
+  <h1>Accesso negato</h1>
+  {% if reason == 'app' %}
+    <p class="lead">Ciao {{ user.display if user else '' }}, il tuo account è stato riconosciuto ma non ha ancora un ruolo che dia accesso a <strong>{{ settings.app_name }}</strong>.</p>
+    <p class="muted">Chiedi a un amministratore di assegnarti uno dei ruoli abilitati in Keycloak, oppure di aggiungerti a un gruppo locale. Poi esci e accedi di nuovo.</p>
+  {% elif reason == 'doc' %}
+    <p class="lead">Non hai i permessi per vedere questo contenuto.</p>
+    <p class="muted">Se pensi di doverlo vedere, chiedi a un amministratore di aggiungerti ai permessi di <code>/{{ path }}</code>.</p>
+  {% elif reason == 'edit' %}
+    <p class="lead">Puoi consultare questo contenuto, ma non modificarlo.</p>
+  {% elif reason == 'admin' %}
+    <p class="lead">Questa sezione è riservata agli amministratori.</p>
+  {% elif reason == 'csrf' %}
+    <p class="lead">La sessione del modulo è scaduta.</p>
+    <p class="muted">Torna indietro, ricarica la pagina e riprova.</p>
+  {% endif %}
+  <div class="gate-actions">
+    {% if tree %}<a class="btn primary" href="/">Torna alla home</a>{% endif %}
+    <a class="btn" href="/me">{{ icon('user', size=16) }} Vedi i miei ruoli</a>
+    <a class="btn ghost" href="/logout">{{ icon('logout', size=16) }} Esci</a>
+  </div>
+  {% if not tree and company_logo %}<img src="{{ company_logo }}" alt="{{ settings.company_name }}" class="gate-company">{% endif %}
+</section>
+{% endblock %}

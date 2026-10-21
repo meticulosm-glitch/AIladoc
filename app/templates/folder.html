@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import crumbs_bar, folder_actions, folder_dialogs, item_actions, item_dialogs %}
+{% block title %}{{ node.title if not is_home else 'Home' }}{% endblock %}
+{% block content %}
+<div class="pagehead">
+  {% if not is_home %}{{ crumbs_bar(crumbs) }}{% else %}<span></span>{% endif %}
+  <div class="actions">
+    {% if can_edit %}{{ folder_actions(node.path) }}{% if not is_home %}{{ item_actions(node.path, user) }}{% endif %}{% endif %}
+  </div>
+</div>
+<h1 class="folder-title">{% if is_home %}Documentazione{% else %}{{ kind_icon('folder', 28) }} {{ node.title }}{% endif %}</h1>
+{% if is_home %}<p class="muted lead">Ciao {{ user.display.split(' ')[0] }}, ecco i documenti a cui hai accesso.</p>{% endif %}
+
+{% if node.children %}
+<div class="cards">
+  {% for c in node.children %}
+  <a class="card" href="/d/{{ c.path|urlpath }}">
+    <span class="card-icon ic-bg-{{ c.kind }}">{{ kind_icon(c.kind, 22) }}</span>
+    <span class="card-body">
+      <span class="card-title">{{ c.title }}</span>
+      <span class="card-meta">{% if c.is_dir %}{{ c.children|length }} elementi{% else %}{{ KIND_LABELS.get(c.kind, 'File') }} · {{ c.name }}{% endif %}</span>
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+  {{ kind_icon('folder', 48) }}
+  <p><strong>Questa cartella è vuota</strong></p>
+  {% if can_edit %}<p class="muted">Crea una pagina, una cartella o un'intera struttura, oppure carica dei file.</p>
+  <div class="empty-actions">
+    <button class="btn primary" type="button" data-create data-parent="{{ node.path }}">{{ icon('plus', size=16) }} Nuovo</button>
+    <button class="btn" type="button" data-create data-parent="{{ node.path }}" data-mode="tree">{{ icon('menu', size=16) }} Crea una struttura</button>
+  </div>{% else %}<p class="muted">Non ci sono documenti che puoi vedere qui.</p>{% endif %}
+</div>
+{% endif %}
+{% if can_edit %}
+  {{ folder_dialogs(node.path, csrf) }}
+  {% if not is_home %}{{ item_dialogs(node.path, node.name, tree, csrf, all_folders(tree, request.state.perms)) }}{% endif %}
+{% endif %}
+{% endblock %}

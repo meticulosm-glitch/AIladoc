@@ -1,0 +1,45 @@
+{% extends "admin/_base.html" %}
+{% block admin %}
+<p class="muted intro">I <strong>gruppi locali</strong> servono quando in Keycloak non esiste un ruolo adatto: elenchi qui gli utenti
+(username o email Keycloak) e poi usi il gruppo in un ruolo app o direttamente nei permessi dei documenti.</p>
+
+<div class="admin-grid">
+  <div class="panel">
+    <table class="table">
+      <thead><tr><th>Gruppo</th><th>Membri</th><th>Usato nei ruoli</th><th></th></tr></thead>
+      <tbody>
+      {% for g in groups %}
+        <tr class="{% if editing and editing.id == g.id %}selected{% endif %}">
+          <td><strong>{{ g.name }}</strong>{% if g.description %}<div class="muted small">{{ g.description }}</div>{% endif %}</td>
+          <td>{% for m in g.members[:6] %}<code class="tag">{{ m.identifier }}</code>{% endfor %}{% if g.members|length > 6 %}<span class="muted small"> +{{ g.members|length - 6 }}</span>{% endif %}{% if not g.members %}<span class="muted">—</span>{% endif %}</td>
+          <td>{% for r in g.roles %}<span class="pill">{{ r.name }}</span>{% else %}<span class="muted">—</span>{% endfor %}</td>
+          <td class="row-actions">
+            <a class="btn small" href="/admin/groups?edit={{ g.id }}">{{ icon('edit', size=14) }}</a>
+            <form method="post" action="/admin/groups/{{ g.id }}/delete" data-confirm="Eliminare il gruppo «{{ g.name }}»?">
+              <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small danger-ghost">{{ icon('trash', size=14) }}</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">Nessun gruppo locale.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form class="panel form" method="post" action="/admin/groups">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if editing %}<input type="hidden" name="id" value="{{ editing.id }}">{% endif %}
+    <h2>{% if editing %}Modifica «{{ editing.name }}»{% else %}Nuovo gruppo{% endif %}</h2>
+    <label class="field">Nome<input name="name" required value="{{ editing.name if editing else '' }}" placeholder="es. Team Progetto Alfa"></label>
+    <label class="field">Descrizione<input name="description" value="{{ editing.description if editing else '' }}"></label>
+    <label class="field">Membri
+      <textarea name="members" rows="7" placeholder="un utente per riga&#10;mario.rossi&#10;giulia@azienda.it">{{ editing.members|map(attribute='identifier')|join('\n') if editing else '' }}</textarea>
+      <small class="muted">Username o email come appaiono in Keycloak (maiuscole indifferenti).</small>
+    </label>
+    <div class="form-actions">
+      {% if editing %}<a class="btn ghost" href="/admin/groups">Annulla</a>{% endif %}
+      <button class="btn primary">{% if editing %}Salva{% else %}Crea gruppo{% endif %}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

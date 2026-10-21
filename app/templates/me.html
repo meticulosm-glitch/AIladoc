@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Profilo{% endblock %}
+{% block body_class %}{% if not tree %}centered{% endif %}{% endblock %}
+{% block content %}
+<section class="narrow">
+  <h1>Il tuo profilo</h1>
+  <dl class="kv">
+    <dt>Nome</dt><dd>{{ user.display }}</dd>
+    <dt>Username</dt><dd><code>{{ user.username }}</code></dd>
+    <dt>Email</dt><dd>{{ user.email or '—' }}</dd>
+    <dt>Accesso all'app</dt><dd><span class="pill level-{{ level_name }}">{{ LEVEL_LABELS[level_name] }}</span></dd>
+    <dt>Ruoli app</dt><dd>{% for r in user.app_roles %}<span class="pill">{{ r }}</span>{% else %}<span class="muted">nessuno</span>{% endfor %}</dd>
+    <dt>Gruppi locali</dt><dd>{% for g in user.groups %}<span class="pill">{{ g }}</span>{% else %}<span class="muted">nessuno</span>{% endfor %}</dd>
+    <dt>Ruoli Keycloak ricevuti</dt><dd>{% for r in user.kc_roles|sort %}<code class="tag">{{ r }}</code>{% else %}<span class="muted">nessuno</span>{% endfor %}</dd>
+  </dl>
+  <p class="muted small">I ruoli vengono letti al momento dell'accesso: se un amministratore li cambia in Keycloak, esci e rientra per aggiornarli.</p>
+  <div class="gate-actions left">{% if tree %}<a class="btn" href="/">Home</a>{% endif %}<a class="btn ghost" href="/logout">{{ icon('logout', size=16) }} Esci</a></div>
+</section>
+{% endblock %}

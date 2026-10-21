@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Accesso di sviluppo{% endblock %}
+{% block body_class %}centered{% endblock %}
+{% block content %}
+<section class="gate">
+  <img src="{{ app_logo }}" alt="" class="gate-logo">
+  <h1>{{ settings.app_name }}</h1>
+  <p class="pill warn">AUTH_DEV_MODE attivo: accesso simulato senza Keycloak</p>
+  <p class="muted">Scegli un utente di prova. I ruoli simulano quelli che arriverebbero da Keycloak.</p>
+  <div class="dev-users">
+    {% for u, label, roles in [('admin','Anna Admin','ailadoc-admin'),('editor','Elio Editor','ailadoc-editor'),('viewer','Vera Viewer','ailadoc-viewer'),('nobody','Nino Nessuno','')] %}
+    <form method="post" action="/dev-login">
+      <input type="hidden" name="username" value="{{ u }}"><input type="hidden" name="roles" value="{{ roles }}"><input type="hidden" name="next" value="{{ next }}">
+      <button class="dev-user"><strong>{{ label }}</strong><span class="muted small">{{ roles or 'nessun ruolo' }}</span></button>
+    </form>
+    {% endfor %}
+  </div>
+  <details class="dev-custom">
+    <summary>Utente personalizzato</summary>
+    <form method="post" action="/dev-login" class="stack">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="field">Username<input name="username" required></label>
+      <label class="field">Ruoli Keycloak (separati da virgola)<input name="roles" placeholder="ailadoc-viewer, commerciale"></label>
+      <button class="btn primary">Entra</button>
+    </form>
+  </details>
+</section>
+{% endblock %}

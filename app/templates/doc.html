@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_macros.html" import crumbs_bar, restricted_badge, folder_actions, folder_dialogs, item_actions, item_dialogs, secrets_banner %}
+{% block content %}
+<div class="doc-grid">
+  <div class="doc-col">
+    <div class="pagehead">
+      {{ crumbs_bar(crumbs) }}
+      <div class="actions">
+        {{ restricted_badge(restricted, user) }}
+        {% if folder is not none and can_edit_folder %}{{ folder_actions(folder) }}{% endif %}
+        {% if can_edit %}
+          <a class="btn primary" href="/edit/{{ rel|urlpath }}">{{ icon('edit', size=16) }} Modifica</a>
+          {{ item_actions(folder if (folder is not none and folder) else rel, user) }}
+        {% endif %}
+      </div>
+    </div>
+    {{ secrets_banner(secrets, rel, true, user) }}
+    <article class="md-content">{{ html|safe }}</article>
+    <footer class="doc-foot muted small">
+      Ultima modifica: {{ modified }}
+      · <a href="/download/{{ rel|urlpath }}">{{ icon('download', size=14) }} Scarica sorgente .md</a>
+    </footer>
+  </div>
+  {% if toc and (toc|length > 1 or toc[0].children) %}
+  <aside class="toc" aria-label="In questa pagina">
+    <div class="toc-title">In questa pagina</div>
+    {% macro toc_list(items) %}<ul>{% for t in items %}<li><a href="#{{ t.id }}">{{ t.name|striptags }}</a>{% if t.children %}{{ toc_list(t.children) }}{% endif %}</li>{% endfor %}</ul>{% endmacro %}
+    {{ toc_list(toc) }}
+  </aside>
+  {% endif %}
+</div>
+{% if folder is not none and can_edit_folder %}{{ folder_dialogs(folder, csrf) }}{% endif %}
+{% if can_edit %}
+  {% set target = folder if (folder is not none and folder) else rel %}
+  {{ item_dialogs(target, target.rsplit('/',1)[-1], tree, csrf, all_folders(tree, request.state.perms)) }}
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="/static/js/mermaid-init.js" defer></script>{% endblock %}

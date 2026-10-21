@@ -1,0 +1,30 @@
+{% extends "admin/_base.html" %}
+{% block admin %}
+<p class="muted intro">I loghi si possono caricare da qui oppure mettere direttamente nella cartella <code>data/branding/</code> del server.
+Formato consigliato: <strong>SVG</strong> (nitido a ogni dimensione); in alternativa PNG trasparente.</p>
+<div class="brand-grid">
+  {% for which, label, spec in [
+      ('app', 'Logo dell\'app', 'Quadrato, es. 512×512 px. Usato in alto a sinistra (alto 32 px) e come icona del browser. File: app-logo.svg / .png'),
+      ('company', 'Logo aziendale', 'Orizzontale, es. 600×160 px (rapporto circa 4:1), sfondo trasparente. Usato in fondo al menu e nella pagina di accesso negato. File: company-logo.svg / .png')] %}
+  <div class="panel brand-card">
+    <h2>{{ label }}</h2>
+    <div class="brand-preview {{ which }}">
+      {% if which == 'app' %}<img src="{{ app_logo }}" alt="">{% elif company_logo %}<img src="{{ company_logo }}" alt="">{% else %}<span class="muted">Nessun logo</span>{% endif %}
+    </div>
+    <p class="muted small">{{ spec }}</p>
+    <p class="small">Attuale: {% if files[which] %}<code>data/branding/{{ files[which] }}</code>{% else %}<span class="muted">predefinito</span>{% endif %}</p>
+    <form method="post" action="/admin/branding" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="which" value="{{ which }}">
+      <input type="file" name="file" accept=".svg,.png,.webp,.jpg,.jpeg" required>
+      <div class="form-actions"><button class="btn primary" name="action" value="upload">{{ icon('upload', size=16) }} Carica</button></div>
+    </form>
+    {% if files[which] %}
+    <form method="post" action="/admin/branding">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="which" value="{{ which }}">
+      <button class="btn small danger-ghost" name="action" value="delete">Rimuovi</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

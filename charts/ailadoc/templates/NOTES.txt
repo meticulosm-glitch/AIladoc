@@ -1,0 +1,21 @@
+AIladoc è installato.
+
+URL dell'app: {{ include "ailadoc.baseUrl" . }}
+
+Nel client Keycloak "{{ .Values.keycloak.clientId }}" (realm "{{ .Values.keycloak.realm }}") verifica:
+  Valid redirect URIs:              {{ include "ailadoc.baseUrl" . }}/auth/callback
+  Valid post logout redirect URIs:  {{ include "ailadoc.baseUrl" . }}/*
+
+Ruoli Keycloak usati:
+  amministratori: {{ join ", " .Values.app.adminRoles }}
+  editor:         {{ join ", " .Values.app.editorRoles }}
+  lettori:        {{ join ", " .Values.app.viewerRoles }}
+Chi non ha nessuno di questi ruoli vede la pagina di accesso negato.
+
+Documenti e loghi stanno nel volume montato su /data:
+  kubectl -n {{ .Release.Namespace }} cp ./docs/. $(kubectl -n {{ .Release.Namespace }} get pod -l app.kubernetes.io/instance={{ .Release.Name }} -o jsonpath='{.items[0].metadata.name}'):/data/docs/
+{{- if not .Values.ingress.enabled }}
+
+Accesso senza ingress:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ailadoc.fullname" . }} 8000:{{ .Values.service.port }}
+{{- end }}

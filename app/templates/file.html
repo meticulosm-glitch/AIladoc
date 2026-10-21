@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import crumbs_bar, restricted_badge, item_actions, item_dialogs, secrets_banner %}
+{% block content %}
+<div class="pagehead">
+  {{ crumbs_bar(crumbs) }}
+  <div class="actions">
+    {{ restricted_badge(restricted, user) }}
+    <a class="btn" href="/raw/{{ rel|urlpath }}" target="_blank" rel="noopener">{{ icon('external', size=16) }} Apri</a>
+    <a class="btn primary" href="/download/{{ rel|urlpath }}">{{ icon('download', size=16) }} Scarica</a>
+    {% if can_edit %}{{ item_actions(rel, user) }}{% endif %}
+  </div>
+</div>
+
+<div class="filehead">
+  <div class="filehead-icon ic-bg-{{ kind }}">{{ kind_icon(kind, 30) }}</div>
+  <div>
+    <h1 class="file-title">{{ title }}</h1>
+    <div class="muted small">{{ KIND_LABELS.get(kind, 'File') }} · {{ name }} · {{ size }} · modificato il {{ modified }}</div>
+  </div>
+</div>
+
+{{ secrets_banner(secrets, rel, false, user) }}
+<section class="preview">
+{% if kind == 'pdf' %}
+  <iframe class="pdf-frame" src="/raw/{{ rel|urlpath }}#{% if page %}page={{ page }}&{% endif %}view=FitH" title="{{ name }}"></iframe>
+{% elif kind == 'image' %}
+  <div class="img-preview"><img src="/raw/{{ rel|urlpath }}" alt="{{ title }}"></div>
+{% elif kind == 'video' %}
+  <video class="media" src="/raw/{{ rel|urlpath }}" controls preload="metadata"></video>
+{% elif kind == 'audio' %}
+  <audio class="media" src="/raw/{{ rel|urlpath }}" controls preload="metadata"></audio>
+{% elif sheets %}
+  {% set ns = namespace(active=1) %}
+  {% for s in sheets %}{% if sheet and s.name == sheet %}{% set ns.active = loop.index %}{% endif %}{% endfor %}
+  {% if sheets|length > 1 %}
+  <div class="tabs" role="tablist">
+    {% for s in sheets %}<button type="button" role="tab" class="tab {% if loop.index == ns.active %}active{% endif %}" data-tab="sheet-{{ loop.index }}">{{ s.name }}</button>{% endfor %}
+  </div>
+  {% endif %}
+  {% for s in sheets %}
+  <div class="sheet-wrap tabpanel {% if loop.index == ns.active %}active{% endif %}" id="sheet-{{ loop.index }}">
+    {% if s.rows %}
+    <table class="sheet">
+      <thead><tr><th class="rn"></th>{% for c in s.rows[0] %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for r in s.rows[1:] %}<tr><td class="rn">{{ loop.index + 1 }}</td>{% for c in r %}<td>{{ c }}</td>{% endfor %}</tr>{% endfor %}
+      </tbody>
+    </table>
+    {% if s.truncated %}<p class="muted small">Mostrate solo le prime righe: scarica il file per vederlo tutto.</p>{% endif %}
+    {% else %}<p class="muted">Foglio vuoto.</p>{% endif %}
+  </div>
+  {% endfor %}
+{% elif pdf_preview %}
+  <div class="pdf-loading" data-loading>Generazione anteprima in corso…</div>
+  <iframe class="pdf-frame" src="/preview/{{ rel|urlpath }}#{% if page %}page={{ page }}&{% endif %}view=FitH" title="Anteprima di {{ name }}" data-onload-hide></iframe>
+{% elif text is not none %}
+  <pre class="textfile">{{ text }}</pre>
+{% else %}
+  <div class="empty">
+    {{ kind_icon(kind, 48) }}
+    <p><strong>Anteprima non disponibile</strong></p>
+    <p class="muted">Scarica il file per aprirlo con l'applicazione adatta.</p>
+    <a class="btn primary" href="/download/{{ rel|urlpath }}">{{ icon('download', size=16) }} Scarica {{ name }}</a>
+  </div>
+{% endif %}
+</section>
+{% if can_edit %}{{ item_dialogs(rel, name, tree, csrf, all_folders(tree, request.state.perms)) }}{% endif %}
+{% endblock %}

@@ -1,0 +1,114 @@
+{% extends "admin/_base.html" %}
+{% macro ptree(node) -%}
+<ul class="ptree">
+  {% for c in node.children %}
+  <li>
+    <a href="/admin/permissions?path={{ c.path|urlpath }}" class="ptree-item {% if c.path == sel %}active{% endif %}">
+      {{ kind_icon(c.kind, 16) }}<span>{{ c.title }}</span>
+      {% if c.path in restricted_paths %}<span class="nav-lock">{{ icon('lock', size=12) }}</span>{% endif %}
+    </a>
+    {% if c.is_dir and c.children %}{{ ptree(c) }}{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+{% macro entry_label(e) -%}
+<span class="ptype">{{ PRINCIPAL_TYPES.get(e.principal_type, e.principal_type) }}</span>
+{% if e.principal_type in ('kc_role','user') %}<code class="tag">{{ e.principal_value }}</code>{% else %}<strong>{{ e.principal_value }}</strong>{% endif %}
+{%- endmacro %}
+
+{% block admin %}
+<div class="perm-grid">
+  <div class="panel perm-tree">
+    <a href="/admin/permissions?path=" class="ptree-item root {% if sel == '' %}active{% endif %}">{{ icon('home', size=16) }}<span>Tutta la documentazione</span>
+      {% if '' in restricted_paths %}<span class="nav-lock">{{ icon('lock', size=12) }}</span>{% endif %}</a>
+    {{ ptree(full) }}
+  </div>
+
+  <div class="panel perm-detail">
+    <div class="perm-target">
+      <span class="card-icon ic-bg-{{ sel_kind }}">{{ kind_icon(sel_kind, 22) if sel else icon('home', size=22) }}</span>
+      <div><h2>{{ sel_title }}</h2><code class="muted small">/{{ sel }}</code>
+        {% if sel %}<a class="small" href="/d/{{ sel|urlpath }}">apri ↗</a>{% endif %}</div>
+    </div>
+
+    {% if restriction %}
+      <div class="state state-restricted">{{ icon('lock', size=16) }} <div><strong>Accesso ristretto.</strong>
+        Solo le voci qui sotto possono accedere{% if is_dir %} a questa cartella e a tutto il suo contenuto (salvo sottocartelle o file con permessi propri){% endif %}. Gli amministratori vedono sempre tutto.</div></div>
+
+      <table class="table acl">
+        <thead><tr><th>Chi</th><th>Permesso</th><th></th></tr></thead>
+        <tbody>
+        {% for e in restriction.entries %}
+          <tr>
+            <td>{{ entry_label(e) }}</td>
+            <td>
+              <form method="post" action="/admin/permissions" class="inline-form">
+                <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ sel }}">
+                <input type="hidden" name="action" value="level"><input type="hidden" name="entry_id" value="{{ e.id }}">
+                <select name="level" data-autosubmit>
+                  <option value="view" {% if e.level == 'view' %}selected{% endif %}>Lettura</option>
+                  <option value="edit" {% if e.level == 'edit' %}selected{% endif %}>Modifica</option>
+                </select>
+              </form>
+            </td>
+            <td class="row-actions">
+              <form method="post" action="/admin/permissions">
+                <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ sel }}">
+                <input type="hidden" name="action" value="remove"><input type="hidden" name="entry_id" value="{{ e.id }}">
+                <button class="btn small danger-ghost" title="Rimuovi">{{ icon('x', size=14) }}</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="muted">Nessuna voce: per ora solo gli amministratori possono accedere.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <form method="post" action="/admin/permissions" class="add-entry">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ sel }}">
+        <input type="hidden" name="action" value="add">
+        <h3>Aggiungi permesso</h3>
+        <div class="add-row">
+          <select name="principal_type" data-ptype>
+            {% for k, v in PRINCIPAL_TYPES.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+          </select>
+          <span data-pvalue="app_role"><select name="value_app_role">{% for r in roles %}<option>{{ r.name }}</option>{% endfor %}</select></span>
+          <span data-pvalue="group" hidden><select name="value_group">{% for g in groups %}<option>{{ g.name }}</option>{% else %}<option value="">(nessun gruppo)</option>{% endfor %}</select></span>
+          <span data-pvalue="kc_role" hidden><input name="value_kc_role" placeholder="nome ruolo Keycloak"></span>
+          <span data-pvalue="user" hidden><input name="value_user" placeholder="username o email"></span>
+          <select name="level"><option value="view">Lettura</option><option value="edit">Modifica</option></select>
+          <button class="btn primary">{{ icon('plus', size=16) }} Aggiungi</button>
+        </div>
+        <p class="muted small">«Modifica» ha effetto solo per chi ha anche un livello globale di Modifica: il ruolo Keycloak resta il tetto massimo.</p>
+      </form>
+
+      <form method="post" action="/admin/permissions" class="perm-footer" data-confirm="Rimuovere la restrizione? Torneranno a valere i permessi ereditati.">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ sel }}">
+        <input type="hidden" name="action" value="unrestrict">
+        <button class="btn danger-ghost">Rimuovi restrizione</button>
+      </form>
+
+    {% else %}
+      {% if governing is not none %}
+        <div class="state state-inherit">{{ icon('lock', size=16) }}<div><strong>Permessi ereditati</strong> da
+          <a href="/admin/permissions?path={{ governing|urlpath }}">/{{ governing or '' }}</a>:
+          <ul class="inherit-list">{% for e in gov_entries %}<li>{{ entry_label(e) }} · {{ 'Modifica' if e.level == 'edit' else 'Lettura' }}</li>{% else %}<li class="muted">solo amministratori</li>{% endfor %}</ul>
+        </div></div>
+      {% else %}
+        <div class="state state-open">{{ icon('eye', size=16) }}<div><strong>Accesso aperto.</strong>
+          Chiunque abbia accesso all'app lo vede: i ruoli con livello «Lettura» in sola lettura, quelli con «Modifica» possono anche modificarlo.</div></div>
+      {% endif %}
+      {% if exists %}
+      <form method="post" action="/admin/permissions" class="restrict-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="path" value="{{ sel }}">
+        <input type="hidden" name="action" value="restrict">
+        {% if governing is not none %}<label class="check"><input type="checkbox" name="copy_from_parent" value="1" checked> Parti dai permessi ereditati</label>{% endif %}
+        <button class="btn primary">{{ icon('lock', size=16) }} {% if governing is not none %}Definisci permessi specifici{% else %}Restringi accesso{% endif %}</button>
+      </form>
+      {% else %}<p class="muted">Il percorso non esiste.</p>{% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

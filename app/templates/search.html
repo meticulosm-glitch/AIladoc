@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Cerca{% endblock %}
+{% block content %}
+<section class="narrow wide">
+  <h1>Risultati per «{{ q }}»</h1>
+  {% if q|length < 2 %}<p class="muted">Scrivi almeno due caratteri.</p>
+  {% elif not results %}<p class="muted">Nessun documento trovato tra quelli a cui hai accesso.</p>
+  {% if settings.assistant_enabled %}
+  <button type="button" class="ask-hint" data-ask-search>{{ icon('sparkle', size=18) }}
+    <span><strong>Prova a chiedere a {{ settings.assistant_name }}</strong><span class="muted small">Cerca anche dentro PDF, Word, PowerPoint ed Excel e capisce domande scritte a parole tue.</span></span></button>
+  {% endif %}
+  {% else %}
+  <div class="results-head">
+    <p class="muted small">{{ results|length }} risultati</p>
+    {% if settings.assistant_enabled %}<button type="button" class="btn small" data-ask-search>{{ icon('sparkle', size=14) }} Chiedi a {{ settings.assistant_name }}</button>{% endif %}
+  </div>
+  <ul class="results">
+    {% for r in results %}
+    <li>
+      <a href="/d/{{ r.path|urlpath }}" class="result">
+        <span class="card-icon ic-bg-{{ r.kind }}">{{ kind_icon(r.kind, 20) }}</span>
+        <span>
+          <span class="result-title">{{ r.title }}</span>
+          <span class="result-path muted small">/{{ r.path }}</span>
+          {% if r.snippet %}<span class="result-snippet">{{ r.snippet }}</span>{% endif %}
+        </span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

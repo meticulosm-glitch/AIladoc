@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "ailadoc.fullname" . }}-test-connection"
+  labels:
+    {{- include "ailadoc.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: healthz
+      image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+      command:
+        - python
+        - -c
+        - |
+          import urllib.request, sys
+          url = "http://{{ include "ailadoc.fullname" . }}:{{ .Values.service.port }}/healthz"
+          sys.exit(0 if urllib.request.urlopen(url, timeout=10).status == 200 else 1)
