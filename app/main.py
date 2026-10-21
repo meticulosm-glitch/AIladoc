@@ -21,12 +21,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import assistant, auth, creator, db as dbm, preview, secretscan, storage
+from . import assistant, auth, creator, db as dbm, plugins, preview, secretscan, storage
 from .config import settings
 from .db import (LEVEL_LABELS, LEVELS, PRINCIPAL_TYPES, AclEntry, AppRole, GroupMember, LocalGroup, Restriction,
                  SecretIgnore, get_db)
 from .icons import icon, kind_icon
 from .permissions import ADMIN, EDIT, NONE, VIEW, Perms, UserCtx, resolve_user
+from .plugins import drawio
 from .render import pygments_css, render_markdown
 from .storage import KIND_LABELS, PathError
 
@@ -73,6 +74,7 @@ templates = Jinja2Templates(directory=APP_DIR / "templates")
 templates.env.globals.update(
     icon=icon, kind_icon=kind_icon, settings=settings, KIND_LABELS=KIND_LABELS, LEVEL_LABELS=LEVEL_LABELS,
     PRINCIPAL_TYPES=PRINCIPAL_TYPES, quote=quote, assistant_ai=lambda: assistant.llm_provider() != "none",
+    plugins_on=plugins.is_enabled,
 )
 templates.env.filters["urlpath"] = lambda p: quote(p or "")
 
@@ -363,7 +365,7 @@ async def view(request: Request, rel: str, perms: Perms = Depends(get_perms)):
 async def _render_md(request: Request, perms: Perms, tree, rel: str, folder: str | None = None):
     p = storage.abs_path(rel)
     text = p.read_text(encoding="utf-8", errors="replace")
-    html, toc, meta = render_markdown(text, rel)
+    html, toc, meta = await asyncio.to_thread(render_markdown, text, rel, perms.can_view)
     current = folder if folder is not None else rel
     title = storage.md_title(p) or storage.pretty(p.name)
     return render(request, "doc.html", {
@@ -381,6 +383,7 @@ async def _render_file(request: Request, perms: Perms, tree, rel: str, p: Path, 
     ctx = {
         "tree": tree, "current": rel, "rel": rel, "kind": kind, "name": p.name, "size": storage.human_size(st.st_size),
         "modified": fmt_time(st.st_mtime), "crumbs": breadcrumbs(rel, storage.pretty(p.name)), "can_edit": perms.can_edit(rel),
+        "mtime_ns": st.st_mtime_ns,
         "restricted": perms.governing(rel), "sheets": None, "text": None,
         "pdf_preview": preview.can_pdf_preview(p.name), "title": storage.pretty(p.name),
         "page": _int_param(request.query_params.get("page")), "sheet": request.query_params.get("sheet", ""),
@@ -394,6 +397,16 @@ async def _render_file(request: Request, perms: Perms, tree, rel: str, p: Path, 
             log.warning("Lettura foglio fallita %s: %s", p, e)
     elif kind == "text" and st.st_size < 512 * 1024:
         ctx["text"] = p.read_text(encoding="utf-8", errors="replace")
+    elif kind == "diagram" and plugins.is_enabled("drawio"):
+        try:
+            xml = await asyncio.to_thread(drawio.read_diagram, p)
+            pages = await asyncio.to_thread(drawio.pages, xml)
+            start = min(max((ctx["page"] or 1) - 1, 0), max(len(pages) - 1, 0))
+            ctx["diagram_html"] = drawio.viewer_html(rel, xml, page=start, full=True)
+            ctx["diagram_pages"] = [pg["name"] for pg in pages]
+        except drawio.DiagramError as e:
+            ctx["diagram_error"] = str(e)
+        ctx["drawio_editor"] = drawio.editor_url() if perms.can_edit(rel) else ""
     return render(request, "file.html", ctx)
 
 
@@ -554,8 +567,30 @@ async def edit_form(request: Request, rel: str, perms: Perms = Depends(get_perms
     return render(request, "edit.html", {
         "tree": tree, "current": rel, "rel": rel, "content": content,
         "crumbs": breadcrumbs(rel), "is_new": False, "folder": storage.parent_of(rel), "filename": p.name,
-        "mtime": p.stat().st_mtime_ns, "secrets": _check_text(content, rel),
+        "mtime": p.stat().st_mtime_ns, "secrets": _check_text(content, rel), **editor_extras(tree, perms),
     })
+
+
+def editor_extras(tree: storage.Node, perms: Perms) -> dict:
+    """Dati per il menu «Inserisci» dell'editor: macro dei plugin e file citabili."""
+    files = []
+
+    def walk(n: storage.Node):
+        for c in n.children:
+            if c.is_dir:
+                if c.index:
+                    files.append({"path": c.index, "title": c.title, "kind": "markdown"})
+                walk(c)
+            elif c.kind in ("markdown", "sheet", "diagram") and perms.can_view(c.path):
+                if c.kind == "sheet" and not c.name.lower().endswith(("xlsx", "xlsm", "csv", "tsv")):
+                    continue
+                files.append({"path": c.path, "title": c.title, "kind": c.kind})
+
+    if tree.index:
+        files.append({"path": tree.index, "title": "Home", "kind": "markdown"})
+    walk(tree)
+    return {"plugin_snippets": plugins.snippets(), "plugin_files": files,
+            "drawio_editor": drawio.editor_url() if plugins.is_enabled("drawio") else ""}
 
 
 def _check_text(content: str, rel: str) -> list:
@@ -575,7 +610,8 @@ def _secrets_gate(request: Request, perms: Perms, content: str, rel: str, confir
     msg = ("Il testo contiene password o credenziali: toglile prima di salvare." if settings.secrets_policy == "block"
            else "Il testo sembra contenere password o credenziali. Controlla e, se sei sicuro, salva comunque.")
     return render(request, "edit.html", {"tree": tree, "content": content, "secrets": found, "secret_msg": msg,
-                                         "crumbs": breadcrumbs(ctx.get("folder") or ""), **ctx}, status=422)
+                                         "crumbs": breadcrumbs(ctx.get("folder") or ""), **editor_extras(tree, perms),
+                                         **ctx}, status=422)
 
 
 @app.post("/edit/{rel:path}", dependencies=[Depends(check_csrf)])
@@ -613,7 +649,7 @@ async def new_form(request: Request, dir: str = "", perms: Perms = Depends(get_p
     tree = perms.filter_tree(storage.build_tree())
     return render(request, "edit.html", {
         "tree": tree, "current": folder, "rel": "", "content": "# Nuova pagina\n\n", "crumbs": breadcrumbs(folder),
-        "is_new": True, "folder": folder, "filename": "", "mtime": "",
+        "is_new": True, "folder": folder, "filename": "", "mtime": "", **editor_extras(tree, perms),
     })
 
 
@@ -648,8 +684,9 @@ async def api_render(request: Request, perms: Perms = Depends(get_perms)):
     if not perms.user.can_edit:
         raise Denied("edit")
     data = await request.json()
-    html, _, _ = render_markdown(str(data.get("content", "")), storage.clean_rel(str(data.get("path", ""))))
-    return JSONResponse({"html": html})
+    html, _, meta = await asyncio.to_thread(render_markdown, str(data.get("content", "")),
+                                            storage.clean_rel(str(data.get("path", ""))), perms.can_view)
+    return JSONResponse({"html": html, "numbered": bool(meta.get("numbered_headings"))})
 
 
 @app.post("/api/secrets/check", dependencies=[Depends(check_csrf)])
@@ -717,6 +754,74 @@ async def api_create(request: Request, perms: Perms = Depends(get_perms)):
     if data.get("flash") and created:
         flash(request, "Creata 1 voce." if len(created) == 1 else f"Creati {len(created)} elementi.")
     return JSONResponse({"items": items, "created": len(created), "url": url})
+
+
+# ------------------------------------------------------------------- plugin
+@app.get("/plugins", response_class=HTMLResponse)
+async def plugins_guide(request: Request, perms: Perms = Depends(get_perms)):
+    """Guida alle macro: per ogni plugin attivo, esempi con sorgente e risultato."""
+    sections = []
+    for pl in plugins.enabled():
+        examples = []
+        for ex in pl.examples:
+            title, src = ex[0], ex[1]
+            preview_ok = ex[2] if len(ex) > 2 else True
+            html = (await asyncio.to_thread(render_markdown, src, "guida.md", perms.can_view))[0] if preview_ok else ""
+            examples.append({"title": title, "source": src, "html": html})
+        sections.append({"plugin": pl, "examples": examples})
+    disabled = [p for pid, p in plugins._registry().items() if not plugins.is_enabled(pid)]
+    return render(request, "plugins.html", {
+        "tree": perms.filter_tree(storage.build_tree()), "sections": sections, "disabled": disabled,
+        "title": "Macro e plugin", "drawio_editor": settings.drawio_editor_url,
+        "embed_hosts": settings.embed_allowed_hosts,
+    })
+
+
+@app.post("/api/drawio/save", dependencies=[Depends(check_csrf)])
+async def api_drawio_save(request: Request, perms: Perms = Depends(get_perms)):
+    if not plugins.is_enabled("drawio"):
+        raise NotFound()
+    data = await request.json()
+    rel = storage.clean_rel(str(data.get("path", "")))
+    p = storage.abs_path(rel)
+    if not p.is_file() or not drawio.is_diagram(p.name):
+        raise NotFound()
+    _require_edit(perms, rel)
+    xml = str(data.get("xml", ""))
+    try:
+        await asyncio.to_thread(drawio.validate, xml)
+    except drawio.DiagramError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    conflict = bool(data.get("mtime")) and str(p.stat().st_mtime_ns) != str(data.get("mtime"))
+    p.write_text(xml, encoding="utf-8")
+    found = await asyncio.to_thread(secretscan.SCANNER.rescan, rel)
+    log.info("%s ha modificato il diagramma %s", perms.user.username, rel)
+    return JSONResponse({"ok": True, "mtime": str(p.stat().st_mtime_ns), "conflict": conflict,
+                         "secrets": len(found)})
+
+
+@app.post("/api/drawio/new", dependencies=[Depends(check_csrf)])
+async def api_drawio_new(request: Request, perms: Perms = Depends(get_perms)):
+    if not plugins.is_enabled("drawio"):
+        raise NotFound()
+    data = await request.json()
+    try:
+        folder = storage.clean_rel(str(data.get("folder", "")))
+        name = storage.safe_filename(str(data.get("name", "")).strip() or "diagramma")
+    except PathError:
+        return JSONResponse({"error": "Nome non valido."}, status_code=400)
+    _require_edit(perms, folder)
+    if not drawio.is_diagram(name):
+        name = creator.slugify(name.rsplit(".", 1)[0] if name.lower().endswith(".xml") else name) or "diagramma"
+        name += ".drawio"
+    rel = f"{folder}/{name}" if folder else name
+    p = storage.abs_path(rel)
+    if p.exists():
+        return JSONResponse({"error": f"Esiste già «{name}» in questa cartella.", "path": rel}, status_code=409)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(drawio.EMPTY, encoding="utf-8")
+    log.info("%s ha creato il diagramma %s", perms.user.username, rel)
+    return JSONResponse({"path": rel, "name": name, "url": f"/d/{quote(rel)}", "mtime": str(p.stat().st_mtime_ns)})
 
 
 @app.post("/upload", dependencies=[Depends(check_csrf)])

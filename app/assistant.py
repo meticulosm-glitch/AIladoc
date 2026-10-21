@@ -39,7 +39,7 @@ from .config import settings
 
 log = logging.getLogger("ailadoc.assistant")
 
-EXTRACTOR_VERSION = 3  # 3: password e credenziali oscurate (secretscan.redact)
+EXTRACTOR_VERSION = 4  # 3: password oscurate (secretscan.redact); 4: diagrammi draw.io
 CHUNK_CHARS = 900
 MAX_FILE_MB = 50
 MAX_CHARS_PER_FILE = 400_000
@@ -303,6 +303,10 @@ def extract(p: Path) -> list[Passage]:
         return _extract_sheet(p)
     if kind == "text":
         return _extract_text(p)
+    if kind == "diagram":
+        from .plugins import drawio
+
+        return [Passage(loc, anchor, text) for loc, anchor, text in drawio.extract(p)]
     return []  # immagini, video, archivi...: si trovano solo per titolo/nome
 
 
@@ -661,7 +665,7 @@ def _answer_html(text: str, sources: list[dict]) -> str:
     from .render import render_markdown
 
     by_n = {s["n"]: s for s in sources}
-    safe, _, _ = render_markdown(text, "")
+    safe, _, _ = render_markdown(text, "", use_plugins=False)
 
     def repl(m: re.Match) -> str:
         s = by_n.get(int(m.group(1)))

@@ -16,6 +16,13 @@ def _bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+DEFAULT_EMBED_HOSTS = (
+    "www.figma.com,figma.com,miro.com,docs.google.com,drive.google.com,calendar.google.com,"
+    "*.sharepoint.com,onedrive.live.com,forms.office.com,app.powerbi.com,www.youtube.com,"
+    "www.youtube-nocookie.com,youtube.com,player.vimeo.com,www.loom.com,viewer.diagrams.net,"
+    "app.diagrams.net,embed.diagrams.net,lucid.app,*.atlassian.net")
+
+
 @dataclass
 class Settings:
     app_name: str = os.getenv("APP_NAME", "AIladoc")
@@ -87,6 +94,16 @@ class Settings:
     assistant_rate_per_minute: int = int(os.getenv("ASSISTANT_RATE_PER_MINUTE", "20"))
     # ogni quanti secondi, al massimo, si ricontrolla se i file sono cambiati
     assistant_rescan_seconds: float = float(os.getenv("ASSISTANT_RESCAN_SECONDS", "5"))
+
+    # --- Plugin (macro nelle pagine) --------------------------------------
+    # "all" oppure elenco tra: macros, tables, drawio
+    plugins: list[str] = field(default_factory=lambda: [x.lower() for x in _list("PLUGINS", "all")] or ["all"])
+    # Editor draw.io incorporato (gira nel browser: il diagramma non passa dal server di draw.io).
+    # Self-hosting: docker run jgraph/drawio e indica qui il suo URL. Vuoto = modifica disattivata.
+    drawio_editor_url: str = os.getenv("DRAWIO_EDITOR_URL", "https://embed.diagrams.net").rstrip("/")
+    # Siti ammessi nella macro "embed" (iframe). "*.dominio" = anche i sottodomini. Vuoto = predefiniti.
+    embed_allowed_hosts: list[str] = field(default_factory=lambda: [
+        x.lower() for x in (_list("EMBED_ALLOWED_HOSTS") or DEFAULT_EMBED_HOSTS.split(","))])
 
     def __post_init__(self) -> None:
         if self.assistant_llm == "anthropic":

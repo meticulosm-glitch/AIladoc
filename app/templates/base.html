@@ -8,6 +8,7 @@
   <script>try{var t=localStorage.getItem('ailadoc-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
   <link rel="stylesheet" href="/static/css/app.css?v=6">
   <link rel="stylesheet" href="/assets/pygments.css">
+  <link rel="stylesheet" href="/static/css/plugins.css?v=1">
   {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -67,6 +68,7 @@
         <div class="menu-head"><strong>{{ user.display }}</strong><span>{{ user.email or user.username }}</span>
           {% if user.dev %}<span class="pill warn">login di sviluppo</span>{% endif %}</div>
         <a href="/me">{{ icon('user', size=16) }} Profilo e ruoli</a>
+        {% if user.global_level > 0 %}<a href="/plugins">{{ icon('puzzle', size=16) }} Macro e plugin</a>{% endif %}
         {% if user.is_admin %}<a href="/admin/permissions">{{ icon('shield', size=16) }} Amministrazione</a>
         {% if secret_count %}<a href="/admin/secrets" class="menu-warn">{{ icon('key', size=16) }} {{ secret_count }} possibili password nei documenti</a>{% endif %}{% endif %}
         <a href="/logout">{{ icon('logout', size=16) }} Esci</a>
@@ -136,6 +138,7 @@
 {% endif %}
 <script>window.AILADOC = {csrf: "{{ csrf }}"};</script>
 <script src="/static/js/app.js?v=3"></script>
+<script src="/static/js/plugins.js?v=1"></script>
 {% if user and user.global_level > 0 and settings.assistant_enabled %}<script src="/static/js/assistant.js?v=1"></script>{% endif %}
 {% if user and user.can_edit and tree and request.state.perms is defined %}{% include "_create.html" %}{% endif %}
 {% block scripts %}{% endblock %}

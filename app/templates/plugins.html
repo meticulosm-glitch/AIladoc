@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Macro e plugin{% endblock %}
+{% block content %}
+<div class="plug-guide">
+  <header class="plug-guide-head">
+    <h1>Macro e plugin</h1>
+    <p class="muted">Le macro si scrivono nelle pagine Markdown con la sintassi <code>/// nome | argomento</code> … <code>///</code>; le opzioni vanno sulle righe subito sotto, rientrate di 4 spazi (formato YAML: metti tra virgolette i valori che contengono <code>:</code> o iniziano con <code>[</code>, <code>{</code>, <code>#</code>). Se una macro compare come testo grezzo con il bordo tratteggiato, un'opzione non è valida. Per mettere un blocco dentro un altro, il contenitore usa una barra in più (<code>////</code>). Nell'editor trovi tutto nel menu <strong>Inserisci</strong>.</p>
+    <nav class="plug-guide-nav" aria-label="Plugin">
+      {% for s in sections %}<a href="#plugin-{{ s.plugin.id }}">{{ s.plugin.name }}</a>{% endfor %}
+    </nav>
+  </header>
+
+  {% for s in sections %}
+  <section class="plug-section" id="plugin-{{ s.plugin.id }}">
+    <div class="plug-section-head">
+      <span class="plug-badge">{{ icon(s.plugin.icon, size=20) }}</span>
+      <div>
+        <h2>{{ s.plugin.name }} <span class="pill ok">attivo</span></h2>
+        <p class="muted">{{ s.plugin.description }}</p>
+      </div>
+    </div>
+    {% if s.plugin.id == 'drawio' %}
+    <div class="plug-notes">
+      <p>I file <code>.drawio</code> si caricano come gli altri allegati (o si creano dall'editor con <em>Inserisci → Nuovo diagramma</em>). Aprendoli si vedono con zoom, pagine e livelli; chi può modificarli ha il pulsante <strong>Modifica diagramma</strong>. Nell'anteprima dell'editor, doppio clic su un diagramma per modificarlo.</p>
+      <p class="muted small">Editor: {% if drawio_editor %}<code>{{ drawio_editor }}</code> — il diagramma passa dal browser all'editor senza essere caricato su server esterni.{% else %}non configurato (<code>DRAWIO_EDITOR_URL</code> vuoto): i diagrammi si possono solo vedere.{% endif %}</p>
+    </div>
+    {% elif s.plugin.id == 'tables' %}
+    <div class="plug-notes">
+      <table class="plug-opts">
+        <thead><tr><th>Opzione</th><th>Cosa fa</th><th>Esempio</th></tr></thead>
+        <tbody>
+          <tr><td><code>source</code>, <code>sheet</code>, <code>header</code></td><td>Legge un file .xlsx/.csv della documentazione (relativo alla pagina, o da <code>/</code>). Senza <code>source</code> usa i dati nel blocco (tabella Markdown o CSV).</td><td><code>source: ../dati/vendite.xlsx</code></td></tr>
+          <tr><td><code>compute</code></td><td>Colonne calcolate (anche in sequenza).</td><td><code>Totale: Quantità * Prezzo</code></td></tr>
+          <tr><td><code>filter</code></td><td>Tiene solo le righe che soddisfano la condizione. Nomi con spazi tra <code>[ ]</code>.</td><td><code>"[Prezzo €] >= 100 and Stato = 'Aperto'"</code></td></tr>
+          <tr><td><code>group</code> + <code>aggregate</code></td><td>Raggruppa e calcola sum, avg, min, max, count, count_distinct, median.</td><td><code>["sum(Importo) as Totale"]</code></td></tr>
+          <tr><td><code>pivot</code></td><td>Tabella pivot.</td><td><code>{rows: Area, columns: Mese, values: Vendite}</code></td></tr>
+          <tr><td><code>sort</code>, <code>limit</code>, <code>columns</code></td><td>Ordina (<code>-</code> = decrescente), limita, sceglie e rinomina le colonne.</td><td><code>sort: -Totale</code></td></tr>
+          <tr><td><code>totals</code>, <code>format</code></td><td>Riga dei totali; formati euro, usd, percent, pct, int, 0.00, date.</td><td><code>format: {Totale: euro}</code></td></tr>
+          <tr><td><code>highlight</code>, <code>colors</code></td><td>Evidenzia righe; colora i valori di una colonna come stati.</td><td><code>colors: {Stato: {Chiuso: green}}</code></td></tr>
+          <tr><td><code>chart</code>, <code>x</code>, <code>y</code></td><td>Grafico: bar, hbar, stacked, line, area, pie, donut (<code>chart_only: true</code> per nascondere la tabella).</td><td><code>chart: line</code></td></tr>
+        </tbody>
+      </table>
+      <p class="muted small">Funzioni nelle espressioni: round, abs, min, max, contains, startswith, lower, upper, year, month, quarter, days, today, se(condizione, sì, no), concat, coalesce. Nell'editor: incolla celle da Excel per ottenere una tabella, oppure usa <strong>▦</strong> per l'editor visuale.</p>
+    </div>
+    {% elif s.plugin.id == 'macros' %}
+    <div class="plug-notes">
+      <p class="muted small">Colori: blue, green, red, yellow, orange, purple, teal, pink, gray, accent (anche in italiano) oppure un esadecimale come <code>"#0d6e5c"</code>. Icone: nomi come info, warning, check, rocket, idea, book, team, calendar, chart, gear, lock, support… oppure un'emoji. Siti incorporabili con <code>embed</code>: {{ embed_hosts|join(', ') }}. Numerazione automatica dei titoli: <code>numbered_headings: true</code> nel front matter.</p>
+    </div>
+    {% endif %}
+    {% for ex in s.examples %}
+    <div class="plug-example">
+      <h3>{{ ex.title }}</h3>
+      <div class="plug-example-grid{% if not ex.html %} source-only{% endif %}">
+        <div class="plug-src">
+          <button type="button" class="btn small plug-copy" data-copy title="Copia il codice">Copia</button>
+          <pre><code>{{ ex.source }}</code></pre>
+        </div>
+        {% if ex.html %}<div class="plug-out md-content">{{ ex.html|safe }}</div>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+
+  {% if disabled %}
+  <section class="plug-section">
+    <h2>Plugin non attivi</h2>
+    <ul>{% for p in disabled %}<li><strong>{{ p.name }}</strong> — {{ p.description }}</li>{% endfor %}</ul>
+    <p class="muted small">Si attivano con la variabile d'ambiente <code>PLUGINS</code> (es. <code>PLUGINS=all</code>).</p>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/mermaid-init.js" defer></script>
+<script>
+document.querySelectorAll("[data-copy]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var code = b.parentNode.querySelector("code").textContent;
+    (navigator.clipboard ? navigator.clipboard.writeText(code) : Promise.reject()).then(function () {
+      b.textContent = "Copiato"; setTimeout(function () { b.textContent = "Copia"; }, 1500);
+    }).catch(function () {});
+  });
+});
+</script>
+{% endblock %}

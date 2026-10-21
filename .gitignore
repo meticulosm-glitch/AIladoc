@@ -7,3 +7,6 @@ __pycache__/
 
 # Keycloak di prova: solo per test locali
 keycloak/
+
+# librerie JS scaricate da docker/fetch_vendor.py
+app/static/vendor/

@@ -17,6 +17,8 @@ PATHS = {
     "archive": _FILE + '<path d="M10 3v2"/><path d="M10 7v2"/><path d="M10 11v2"/><rect x="8.5" y="14" width="3" height="4" rx="1"/>',
     "text": _FILE + '<path d="M8.5 12.5h7"/><path d="M8.5 15.5h7"/><path d="M8.5 18.5h4"/>',
     "file": _FILE,
+    "diagram": '<rect x="3" y="3.5" width="7" height="5" rx="1.2"/><rect x="14" y="15.5" width="7" height="5" rx="1.2"/><rect x="14" y="3.5" width="7" height="5" rx="1.2"/><path d="M10 6h4"/><path d="M6.5 8.5V18h7.5"/>',
+    "puzzle": '<path d="M10 4.5a2 2 0 1 1 4 0V6h3.5A1.5 1.5 0 0 1 19 7.5V11h-1.5a2 2 0 1 0 0 4H19v3.5a1.5 1.5 0 0 1-1.5 1.5H14v-1.5a2 2 0 1 0-4 0V20H6.5A1.5 1.5 0 0 1 5 18.5V15h1.5a2 2 0 1 0 0-4H5V7.5A1.5 1.5 0 0 1 6.5 6H10z"/>',
     # --- interfaccia ---
     "chevron": '<path d="m9 6 6 6-6 6"/>',
     "search": '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',

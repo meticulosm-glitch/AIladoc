@@ -10,6 +10,7 @@
       <a href="/admin/groups" class="{% if section == 'groups' %}active{% endif %}">{{ icon('users', size=16) }} Gruppi locali</a>
       <a href="/admin/secrets" class="{% if section == 'secrets' %}active{% endif %}">{{ icon('key', size=16) }} Password nei documenti{% if secret_count %} <span class="count-badge">{{ secret_count }}</span>{% endif %}</a>
       <a href="/admin/branding" class="{% if section == 'branding' %}active{% endif %}">{{ icon('image-up', size=16) }} Loghi</a>
+      <a href="/plugins">{{ icon('puzzle', size=16) }} Macro e plugin</a>
     </nav>
   </div>
   {% block admin %}{% endblock %}

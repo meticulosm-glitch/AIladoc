@@ -8,6 +8,7 @@ Portale di documentazione aziendale, containerizzato. Si accede con l'account **
 - **Permessi** per cartella o per documento, basati su ruoli Keycloak e gruppi locali.
 - **Controllo password**: segnala password, PIN, token e chiavi scritti in chiaro nei documenti (anche dentro PDF, Word ed Excel), chiede conferma prima di salvarli e li oscura in ricerca e assistente.
 - Assistente **AIla**: trova i documenti partendo da una domanda scritta a parole proprie; con un LLM configurato risponde citando le fonti.
+- **Plugin** nelle pagine: diagrammi **draw.io** (visualizzazione e modifica nel browser), **tabelle dinamiche** da Excel/CSV con calcoli, filtri, pivot e grafici, **macro di formattazione** (pannelli, card, pulsanti, hero, tab, colonne, stato, countdown, LaTeX, HTML, contenuti incorporati, citazione di altre pagine).
 
 ---
 
@@ -103,6 +104,36 @@ Il pulsante **Chiedi a AIla** (o <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>J</kbd>) ap
 
 Se l'LLM non risponde, AIla mostra comunque i documenti trovati.
 
+### Plugin: diagrammi, tabelle e macro
+
+Le macro si scrivono nel Markdown con la sintassi a blocchi di MkDocs Material (`pymdownx.blocks`): `/// nome | argomento`, le opzioni subito sotto rientrate di 4 spazi (YAML), il contenuto, poi `///`. Per annidare, il blocco esterno usa una barra in più (`////`). Nell'editor sono tutte nel menu **Inserisci**; la pagina **Macro e plugin** (`/plugins`, dal menu utente) mostra ogni esempio con il sorgente accanto al risultato.
+
+```text
+/// table | Spesa per reparto                ← dati da un Excel/CSV della documentazione
+    source: ../Amministrazione/spese.xlsx
+    filter: Stato <> "Respinto"
+    group: Reparto
+    aggregate: ["sum(Importo) as Totale"]
+    format: {Totale: euro}
+    chart: bar
+///
+
+/// drawio | schema-rete.drawio              ← diagramma draw.io
+    page: 2
+///
+
+/// include | ../Procedure/resi.md#tempi    ← cita una sezione di un'altra pagina
+///
+```
+
+| Plugin | Cosa aggiunge |
+|--------|---------------|
+| **draw.io** (`drawio`) | I file `.drawio` si caricano come gli altri allegati o si creano dall'editor (*Inserisci → Nuovo diagramma*). Si vedono con il visualizzatore draw.io (pagine, livelli, zoom, schermo intero); chi può modificarli usa **Modifica diagramma**, che apre l'editor draw.io incorporato: il diagramma passa tra il browser e l'iframe e viene salvato da AIladoc, senza caricarlo sui server di draw.io. Nelle pagine: `/// drawio \| file.drawio` oppure `![didascalia](file.drawio)`. Il testo delle forme è indicizzato da AIla e controllato dal controllo password. |
+| **Tabelle** (`tables`) | `/// table` legge un `.xlsx`/`.csv` (o i dati scritti nel blocco) e applica, in quest'ordine, `compute` (colonne calcolate), `filter`, `group`+`aggregate` o `pivot`, `sort`, `columns`, `limit`, `totals`; poi `format` (euro, percentuali, date), `highlight`, `colors` (stati colorati) e `chart` (barre, linee, aree, torta, ciambella). Le espressioni sono valutate da un interprete ristretto (niente `eval`). Nel browser la tabella si ordina cliccando le intestazioni, si filtra e si scarica in CSV. Nell'editor: editor visuale delle tabelle Markdown (▦), incolla da Excel → tabella, *Tabella da Excel/CSV…*. |
+| **Macro** (`macros`) | `panel`, `cards`/`card`, `button`, `hero`, `title`, `divider`, `background`, `columns`/`column`, `tabs` (anche verticali) con `tab`, `expand`, `progress`, `countdown`, `latex` (e `$…$`), `html` (sanificato: niente script), `embed` (iframe solo dai siti in `EMBED_ALLOWED_HOSTS`, con conversione automatica dei link di YouTube, Figma, Miro, Google, Loom), `include` (cita un'altra pagina o una sua sezione), `pages` (panoramica dinamica di una cartella); in linea `{{status: Testo \| colore}}` e `{{icon: nome}}`; `numbered_headings: true` nel front matter numera i titoli. |
+
+Le citazioni rispettano i permessi di chi legge: `include`, `table` con `source`, `drawio` e `pages` mostrano solo documenti che l'utente può aprire (altrimenti un riquadro «non esiste o non hai i permessi», senza rivelare se il file c'è). Mermaid, KaTeX e il visualizzatore draw.io sono serviti dall'app (`/static/vendor`), non da CDN.
+
 ---
 
 ## Variabili d'ambiente
@@ -175,6 +206,14 @@ Il file `.env.example` le contiene tutte, con commenti. Con Helm non si scrivono
 | `ASSISTANT_MAX_QUESTION` | `1000` | Caratteri massimi di una domanda |
 | `ASSISTANT_RESCAN_SECONDS` | `5` | Ogni quanto, al massimo, si controlla se i file sono cambiati |
 
+### Plugin
+
+| Variabile | Default | Descrizione |
+|-----------|---------|-------------|
+| `PLUGINS` | `all` | `all` oppure elenco tra `drawio`, `tables`, `macros` |
+| `DRAWIO_EDITOR_URL` | `https://embed.diagrams.net` | Editor draw.io incorporato (il browser degli utenti deve raggiungerlo). Per non dipendere da Internet: `docker run -p 8080:8080 jgraph/drawio` e il suo URL. Vuoto = diagrammi in sola visualizzazione |
+| `EMBED_ALLOWED_HOSTS` | Figma, Miro, Google Docs/Drive, SharePoint/OneDrive, Power BI, YouTube, Vimeo, Loom, diagrams.net, Lucid, Atlassian | Siti ammessi nella macro `embed`; `*.dominio` include i sottodomini |
+
 ---
 
 ## Configurare Keycloak
@@ -196,6 +235,7 @@ Nel realm crea un client OpenID Connect:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate      # Python 3.10+
 pip install -r requirements.txt
+python docker/fetch_vendor.py                           # mermaid, KaTeX, visualizzatore draw.io in app/static/vendor
 AUTH_DEV_MODE=true SEED_SAMPLE_DOCS=true DATA_DIR=./data uvicorn app.main:app --reload
 ```
 
@@ -269,6 +309,7 @@ app/
 ├── render.py       Markdown → HTML sanificato
 ├── preview.py      LibreOffice → PDF, Excel/CSV → tabella
 ├── assistant.py    assistente AIla: estrazione testo, indice, LLM opzionale
+├── plugins/        macro delle pagine: drawio.py, tables.py (+ tabledata.py, charts.py), macros.py
 ├── icons.py        icone SVG per tipo
 ├── templates/      pagine Jinja2
 └── static/         CSS, JS, logo predefinito

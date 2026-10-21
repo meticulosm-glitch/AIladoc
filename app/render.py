@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import posixpath
+from typing import Callable
 from urllib.parse import quote, urlsplit
 
 import markdown
@@ -11,6 +12,7 @@ from markdown.extensions import Extension
 from markdown.treeprocessors import Treeprocessor
 from pygments.formatters import HtmlFormatter
 
+from . import plugins
 from .storage import split_front_matter
 
 
@@ -54,11 +56,21 @@ ALLOWED_ATTRS = {
     "audio": {"src", "controls"},
     "source": {"src", "type"},
     "abbr": set(),
+    "span": {"data-countdown", "data-done"},
+    "div": {"data-countdown", "data-done"},
+}
+# "style" serve ai colori personalizzati delle macro (--c: #hex): solo queste proprietà sopravvivono
+ALLOWED_ATTRS["*"] = ALLOWED_ATTRS["*"] | {"style"}
+ALLOWED_STYLE = {
+    "--c", "color", "background-color", "border-color", "text-align", "font-weight", "font-style",
+    "text-decoration", "width", "max-width",
 }
 
 
 def _is_relative(url: str) -> bool:
     if not url or url.startswith(("#", "/", "//")):
+        return False
+    if "\x02" in url or "\x03" in url:  # segnaposto di Markdown (es. mailto offuscato da magiclink)
         return False
     parts = urlsplit(url)
     return not parts.scheme and not parts.netloc
@@ -107,15 +119,27 @@ class _LinkExt(Extension):
         md.treeprocessors.register(_LinkRewriter(md, self.doc_dir), "ailadoc_links", 5)
 
 
-def render_markdown(text: str, doc_path: str) -> tuple[str, list, dict]:
-    """Ritorna (html_sicuro, toc_tokens, front_matter)."""
+def render_markdown(text: str, doc_path: str, can_view: Callable[[str], bool] | None = None, *,
+                    use_plugins: bool = True, ctx: "plugins.RenderCtx | None" = None) -> tuple[str, list, dict]:
+    """Ritorna (html_sicuro, toc_tokens, front_matter).
+
+    ``can_view`` decide quali documenti le macro possono citare/incorporare (di default nessuno):
+    va passato il controllo permessi dell'utente che sta leggendo.
+    """
     meta, body = split_front_matter(text)
     doc_dir = posixpath.dirname(doc_path)
-    md = markdown.Markdown(extensions=EXTENSIONS + [_LinkExt(doc_dir)], extension_configs=EXT_CONFIG)
+    ctx = ctx or plugins.RenderCtx(doc_path, can_view or (lambda _rel: False))
+    exts = EXTENSIONS + [_LinkExt(doc_dir)] + (plugins.extensions(ctx) if use_plugins else [])
+    md = markdown.Markdown(extensions=exts, extension_configs=EXT_CONFIG)
+    md.ailadoc_ctx = ctx
     raw = md.convert(body)
-    safe = nh3.clean(raw, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, link_rel="noopener noreferrer",
-                     strip_comments=True)
-    return safe, getattr(md, "toc_tokens", []), meta
+    safe = sanitize(raw)
+    return ctx.unstash(safe), getattr(md, "toc_tokens", []), meta
+
+
+def sanitize(raw: str) -> str:
+    return nh3.clean(raw, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, link_rel="noopener noreferrer",
+                     strip_comments=True, filter_style_properties=ALLOWED_STYLE)
 
 
 def pygments_css() -> str:

@@ -36,4 +36,9 @@ data:
   ASSISTANT_MODEL: {{ .Values.assistant.model | quote }}
   ASSISTANT_RATE_PER_MINUTE: {{ .Values.assistant.ratePerMinute | toString | quote }}
   ASSISTANT_TIMEOUT: {{ .Values.assistant.timeoutSeconds | toString | quote }}
+  PLUGINS: {{ join "," .Values.plugins.enabled | quote }}
+  DRAWIO_EDITOR_URL: {{ .Values.plugins.drawioEditorUrl | quote }}
+  {{- with .Values.plugins.embedAllowedHosts }}
+  EMBED_ALLOWED_HOSTS: {{ join "," . | quote }}
+  {{- end }}
   AUTH_DEV_MODE: "false"

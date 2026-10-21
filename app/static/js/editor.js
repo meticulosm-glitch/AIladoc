@@ -15,7 +15,9 @@
       body: JSON.stringify({ content: ta.value, path: form.dataset.path })
     }).then(function (r) { return r.json(); }).then(function (d) {
       pv.innerHTML = d.html;
+      pv.classList.toggle("numbered", !!d.numbered);
       if (window.AILADOC_MERMAID) window.AILADOC_MERMAID(pv);
+      if (window.AILADOC_PLUGINS) window.AILADOC_PLUGINS.init(pv);
     }).catch(function () {});
   }
   ta.addEventListener("input", function () {
@@ -59,10 +61,25 @@
   }
   function insertBlock(text) {
     var s = ta.selectionStart, v = ta.value;
+    // mai dentro il front matter (--- ... ---) in cima alla pagina
+    var fm = /^---[ \t]*\n[\s\S]*?\n---[ \t]*(\n|$)/.exec(v);
+    if (fm && s < fm[0].length) { ta.setSelectionRange(fm[0].length, fm[0].length); s = fm[0].length; }
     var pre = s > 0 && v[s - 1] !== "\n" ? "\n\n" : (s > 1 && v[s - 2] !== "\n" ? "\n" : "");
-    ta.setRangeText(pre + text + "\n", s, ta.selectionEnd, "end");
-    ta.focus(); ta.dispatchEvent(new Event("input"));
+    replaceRange(pre + text + "\n", s, ta.selectionEnd);
   }
+  // Sostituisce un tratto di testo mantenendo l'annulla (Ctrl Z) dove il browser lo consente
+  function replaceRange(text, s, e) {
+    ta.focus();
+    ta.setSelectionRange(s, e);
+    var ok = false;
+    try { ok = document.execCommand && document.execCommand("insertText", false, text); } catch (err) { ok = false; }
+    if (!ok) ta.setRangeText(text, s, e, "end");
+    ta.dispatchEvent(new Event("input"));
+  }
+  window.AILADOC_EDITOR = {
+    textarea: ta, form: form, insertBlock: insertBlock, replaceRange: replaceRange, render: render,
+    insertInline: function (t) { replaceRange(t, ta.selectionStart, ta.selectionEnd); }
+  };
   var actions = {
     heading: function () { linePrefix("## "); },
     bold: function () { wrap("**", "**", "testo"); },

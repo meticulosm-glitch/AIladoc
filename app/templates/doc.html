@@ -15,7 +15,7 @@
       </div>
     </div>
     {{ secrets_banner(secrets, rel, true, user) }}
-    <article class="md-content">{{ html|safe }}</article>
+    <article class="md-content{% if meta and meta.numbered_headings %} numbered{% endif %}">{{ html|safe }}</article>
     <footer class="doc-foot muted small">
       Ultima modifica: {{ modified }}
       · <a href="/download/{{ rel|urlpath }}">{{ icon('download', size=14) }} Scarica sorgente .md</a>

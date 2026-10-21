@@ -85,6 +85,18 @@ assistant:
   timeoutSeconds: 60
 
 # ---------------------------------------------------------------------------
+# Plugin delle pagine: macro di formattazione, tabelle dinamiche, diagrammi draw.io
+plugins:
+  # [all] oppure un elenco tra: drawio, tables, macros
+  enabled: [all]
+  # Editor draw.io incorporato. Gira nel browser: i diagrammi non vengono caricati sui server di draw.io.
+  # Per non dipendere da Internet: un'istanza jgraph/drawio nel cluster (es. https://drawio.example.com).
+  # "" = i diagrammi si vedono ma non si modificano dal browser.
+  drawioEditorUrl: https://embed.diagrams.net
+  # Siti ammessi nella macro "embed" (vuoto = elenco predefinito: Figma, Miro, Google, Microsoft 365, YouTube...)
+  embedAllowedHosts: []
+
+# ---------------------------------------------------------------------------
 # Secret dell'app (stringhe di connessione e credenziali).
 secrets:
   # Secret gestito da voi (Sealed Secrets, External Secrets, Vault...). Se impostato,

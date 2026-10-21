@@ -5,7 +5,8 @@
   {{ crumbs_bar(crumbs) }}
   <div class="actions">
     {{ restricted_badge(restricted, user) }}
-    <a class="btn" href="/raw/{{ rel|urlpath }}" target="_blank" rel="noopener">{{ icon('external', size=16) }} Apri</a>
+    {% if drawio_editor and diagram_html is defined %}<button type="button" class="btn" data-drawio-edit="{{ rel }}" data-drawio-url="{{ drawio_editor }}">{{ icon('edit', size=16) }} Modifica diagramma</button>{% endif %}
+    {% if kind != 'diagram' %}<a class="btn" href="/raw/{{ rel|urlpath }}" target="_blank" rel="noopener">{{ icon('external', size=16) }} Apri</a>{% endif %}
     <a class="btn primary" href="/download/{{ rel|urlpath }}">{{ icon('download', size=16) }} Scarica</a>
     {% if can_edit %}{{ item_actions(rel, user) }}{% endif %}
   </div>
@@ -21,7 +22,13 @@
 
 {{ secrets_banner(secrets, rel, false, user) }}
 <section class="preview">
-{% if kind == 'pdf' %}
+{% if diagram_html is defined %}
+  {{ diagram_html|safe }}
+  {% if diagram_pages and diagram_pages|length > 1 %}<p class="muted small">{{ diagram_pages|length }} pagine: {{ diagram_pages|join(' · ') }}. Usa le frecce del visualizzatore per sfogliarle.</p>{% endif %}
+  <p class="muted small">Per citarlo in una pagina: <code>/// drawio | {{ name }}</code> (percorso relativo alla pagina) oppure <code>![{{ title }}]({{ name }})</code>.</p>
+{% elif diagram_error is defined %}
+  <div class="plug-error"><strong>Diagramma non leggibile</strong> <span>{{ diagram_error }}</span></div>
+{% elif kind == 'pdf' %}
   <iframe class="pdf-frame" src="/raw/{{ rel|urlpath }}#{% if page %}page={{ page }}&{% endif %}view=FitH" title="{{ name }}"></iframe>
 {% elif kind == 'image' %}
   <div class="img-preview"><img src="/raw/{{ rel|urlpath }}" alt="{{ title }}"></div>
@@ -66,3 +73,4 @@
 </section>
 {% if can_edit %}{{ item_dialogs(rel, name, tree, csrf, all_folders(tree, request.state.perms)) }}{% endif %}
 {% endblock %}
+{% block scripts %}{% if drawio_editor and diagram_html is defined %}<script>window.AILADOC.diagramMtime = "{{ mtime_ns or '' }}";</script><script src="/static/js/drawio-edit.js?v=1"></script>{% endif %}{% endblock %}

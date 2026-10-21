@@ -8,6 +8,8 @@ tests
 keycloak
 charts
 docker
+!docker/fetch_vendor.py
+app/static/vendor
 **/__pycache__
 **/*.pyc
 .pytest_cache

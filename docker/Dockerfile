@@ -9,6 +9,8 @@ FROM python:3.12-slim-bookworm
 # Per un'immagine leggera: docker build -f docker/Dockerfile --build-arg OFFICE_PREVIEW=false .
 ARG OFFICE_PREVIEW=true
 ARG MERMAID_VERSION=11.4.1
+ARG KATEX_VERSION=0.16.22
+ARG DRAWIO_VERSION=32.5.5
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -34,8 +36,11 @@ RUN pip install -r requirements.txt
 
 COPY app ./app
 COPY sample-docs ./sample-docs
-# Mermaid servito in locale (nessuna dipendenza da CDN a runtime)
-ADD --chmod=644 https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.min.js ./app/static/vendor/mermaid.min.js
+# Librerie JS servite in locale (nessuna dipendenza da CDN a runtime): mermaid, KaTeX (LaTeX),
+# visualizzatore draw.io. Vedi docker/fetch_vendor.py
+COPY docker/fetch_vendor.py /tmp/fetch_vendor.py
+RUN MERMAID_VERSION=${MERMAID_VERSION} KATEX_VERSION=${KATEX_VERSION} DRAWIO_VERSION=${DRAWIO_VERSION} \
+    python /tmp/fetch_vendor.py --dest ./app/static/vendor && rm /tmp/fetch_vendor.py
 # leggibile dall'utente non-root anche se i sorgenti hanno permessi 600
 RUN chmod -R a+rX /app
 

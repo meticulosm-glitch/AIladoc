@@ -21,12 +21,13 @@ KINDS: dict[str, tuple[str, ...]] = {
     "audio": ("mp3", "wav", "ogg", "m4a"),
     "archive": ("zip", "7z", "tar", "gz", "tgz", "rar"),
     "text": ("txt", "json", "yaml", "yml", "xml", "log", "ini", "toml", "sql"),
+    "diagram": ("drawio", "dio"),
 }
 EXT_TO_KIND = {ext: kind for kind, exts in KINDS.items() for ext in exts}
 KIND_LABELS = {
     "markdown": "Pagina", "pdf": "PDF", "slides": "Presentazione", "sheet": "Foglio di calcolo",
     "word": "Documento", "image": "Immagine", "video": "Video", "audio": "Audio",
-    "archive": "Archivio", "text": "Testo", "file": "File", "folder": "Cartella",
+    "archive": "Archivio", "text": "Testo", "diagram": "Diagramma", "file": "File", "folder": "Cartella",
 }
 ALLOWED_UPLOAD_EXT = set(EXT_TO_KIND)
 INDEX_NAMES = ("index.md", "README.md", "readme.md")

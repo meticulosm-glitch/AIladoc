@@ -25,7 +25,7 @@
   /* colori per tipo */
   --k-folder: #c08a1e; --k-markdown: #5b6577; --k-pdf: #d0352b; --k-slides: #e0661b;
   --k-sheet: #1d8a45; --k-word: #2a62d6; --k-image: #8e4ec6; --k-video: #c2185b;
-  --k-audio: #00897b; --k-archive: #8a6a52; --k-text: #607080; --k-file: #7a7f88;
+  --k-audio: #00897b; --k-archive: #8a6a52; --k-text: #607080; --k-file: #7a7f88; --k-diagram: #e8762d;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -36,7 +36,7 @@
     --warn-soft: #3a2f17; --ok-soft: #173326; --code-bg: #23272d; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
     --k-folder: #e0ae4a; --k-markdown: #9aa5b8; --k-pdf: #ff6b5f; --k-slides: #ff9147; --k-sheet: #4ccf7d;
     --k-word: #6f9bff; --k-image: #c18af0; --k-video: #f06292; --k-audio: #4dd0c0; --k-archive: #c4a183;
-    --k-text: #9fb0c0; --k-file: #9aa0a8;
+    --k-text: #9fb0c0; --k-file: #9aa0a8; --k-diagram: #ff9a52;
     color-scheme: dark;
   }
 }
@@ -47,7 +47,7 @@
   --warn-soft: #3a2f17; --ok-soft: #173326; --code-bg: #23272d; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
   --k-folder: #e0ae4a; --k-markdown: #9aa5b8; --k-pdf: #ff6b5f; --k-slides: #ff9147; --k-sheet: #4ccf7d;
   --k-word: #6f9bff; --k-image: #c18af0; --k-video: #f06292; --k-audio: #4dd0c0; --k-archive: #c4a183;
-  --k-text: #9fb0c0; --k-file: #9aa0a8;
+  --k-text: #9fb0c0; --k-file: #9aa0a8; --k-diagram: #ff9a52;
   color-scheme: dark;
 }
 
@@ -72,6 +72,7 @@ code, kbd, pre, .tag { font-family: ui-monospace, "SF Mono", "JetBrains Mono", M
 .ic-slides { color: var(--k-slides); } .ic-sheet { color: var(--k-sheet); } .ic-word { color: var(--k-word); }
 .ic-image { color: var(--k-image); } .ic-video { color: var(--k-video); } .ic-audio { color: var(--k-audio); }
 .ic-archive { color: var(--k-archive); } .ic-text { color: var(--k-text); } .ic-file { color: var(--k-file); }
+.ic-diagram { color: var(--k-diagram); } .ic-bg-diagram { background: color-mix(in srgb, var(--k-diagram) 14%, transparent); }
 [class*="ic-bg-"] { display: inline-grid; place-items: center; border-radius: 9px; flex: none; }
 .ic-bg-folder { background: color-mix(in srgb, var(--k-folder) 14%, transparent); }
 .ic-bg-markdown { background: color-mix(in srgb, var(--k-markdown) 14%, transparent); }

@@ -169,6 +169,17 @@ assistant:
 
 Con un LLM esterno il pod deve poter uscire verso il provider (controlla eventuali NetworkPolicy o proxy).
 
+## Plugin
+
+```yaml
+plugins:
+  enabled: [all]                                   # oppure [drawio, tables, macros]
+  drawioEditorUrl: https://drawio.example.com      # istanza jgraph/drawio interna; "" = solo visualizzazione
+  embedAllowedHosts: [www.figma.com, miro.com, "*.sharepoint.com"]
+```
+
+Il visualizzatore draw.io, KaTeX e mermaid sono già nell'immagine. Con `drawioEditorUrl` esterno (predefinito `https://embed.diagrams.net`) il browser degli utenti deve poter raggiungere quel sito; il diagramma passa dal browser all'iframe e torna ad AIladoc, non viene caricato su draw.io.
+
 ## Valori principali
 
 | Valore | Default | Descrizione |
@@ -185,6 +196,7 @@ Con un LLM esterno il pod deve poter uscire verso il provider (controlla eventua
 | `assistant.enabled` / `name` / `suggestions` | `true` / `AIla` / `[]` | ConfigMap |
 | `assistant.llm` / `model` | `none` / `""` | ConfigMap |
 | `assistant.baseUrl` / `apiKey` | `""` | → Secret |
+| `plugins.enabled` / `drawioEditorUrl` / `embedAllowedHosts` | `[all]` / `https://embed.diagrams.net` / `[]` | plugin delle pagine (ConfigMap) |
 | `app.adminRoles` / `editorRoles` / `viewerRoles` | `ailadoc-admin` / `-editor` / `-viewer` | ruoli Keycloak |
 | `app.baseUrl` | dall'ingress | URL pubblico dell'app |
 | `app.maxUploadMb` | `100` | allinealo all'annotazione `proxy-body-size` dell'ingress |
