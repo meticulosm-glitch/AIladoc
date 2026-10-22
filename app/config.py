@@ -5,6 +5,7 @@ import os
 import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 
 def _list(name: str, default: str = "") -> list[str]:
@@ -45,6 +46,21 @@ class Settings:
     verify_tls: bool = _bool("OIDC_VERIFY_TLS", True)
     # Bundle PEM di una CA interna con cui verificare il certificato di Keycloak
     ca_file: str = os.getenv("OIDC_CA_FILE", "")
+
+    # --- Pagina di login ---------------------------------------------------
+    # form:     pagina di login dell'app; nome utente e password li verifica Keycloak lato server
+    #           (il client deve avere "Direct access grants"). L'utente non vede la pagina di Keycloak.
+    # redirect: si va alla pagina di login di Keycloak (Authorization Code + PKCE).
+    login_mode: str = os.getenv("LOGIN_MODE", "form").strip().lower()
+    # Mostra anche "Accedi con Single Sign-On" (redirect a Keycloak: provider esterni, passkey, ...)
+    login_sso_button: bool = _bool("LOGIN_SSO_BUTTON", False)
+    # Campo "Codice di verifica" per chi ha l'OTP attivo in Keycloak
+    login_otp: bool = _bool("LOGIN_OTP", False)
+    # Link "Password dimenticata?": vuoto = nascosto, "keycloak" = reset del realm, oppure un URL
+    password_reset_url: str = os.getenv("PASSWORD_RESET_URL", "").strip()
+    # Tentativi falliti ammessi in 10 minuti per utente e indirizzo IP (per singolo IP: 5 volte tanto).
+    # La protezione vera è la "Brute force detection" del realm Keycloak.
+    login_max_attempts: int = int(os.getenv("LOGIN_MAX_ATTEMPTS", "10"))
 
     # --- Ruoli Keycloak "di bootstrap" ------------------------------------
     # ADMIN_ROLES è sempre valido (anti lock-out). EDITOR/VIEWER servono a creare
@@ -105,7 +121,15 @@ class Settings:
     embed_allowed_hosts: list[str] = field(default_factory=lambda: [
         x.lower() for x in (_list("EMBED_ALLOWED_HOSTS") or DEFAULT_EMBED_HOSTS.split(","))])
 
+    # --- Metriche Prometheus (GET /metrics) -------------------------------
+    metrics_enabled: bool = _bool("METRICS_ENABLED", True)
+    # Se impostato, /metrics richiede "Authorization: Bearer <token>". Consigliato se /metrics è raggiungibile
+    # da Internet (l'ingress pubblica tutta l'app); vuoto = endpoint aperto (rete interna / NetworkPolicy).
+    metrics_token: str = os.getenv("METRICS_TOKEN", "")
+
     def __post_init__(self) -> None:
+        if self.login_mode not in ("form", "redirect"):
+            self.login_mode = "form"
         if self.assistant_llm == "anthropic":
             self.assistant_model = self.assistant_model or "claude-haiku-5-5"
             self.assistant_base_url = self.assistant_base_url or "https://api.anthropic.com"
@@ -120,6 +144,12 @@ class Settings:
         if self.assistant_llm == "openai":
             return bool(self.assistant_model) and (bool(self.assistant_api_key) or "api.openai.com" not in self.assistant_base_url)
         return False
+
+    @property
+    def password_reset_link(self) -> str:
+        if self.password_reset_url.lower() == "keycloak":
+            return f"{self.issuer}/login-actions/reset-credentials?client_id={quote(self.oidc_client_id)}"
+        return self.password_reset_url
 
     @property
     def docs_dir(self) -> Path:

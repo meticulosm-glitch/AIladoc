@@ -18,7 +18,7 @@ Portale di documentazione aziendale, containerizzato. Si accede con l'account **
   Browser ──────────────► AIladoc (container, porta 8000) ──────► Keycloak (esterno, OIDC)
      │   login/logout                │        ▲   token, chiavi pubbliche
      └──────────────────────────────►│        │
-         redirect a Keycloak         ▼
+     pagina di login dell'app        ▼
                               /data  (volume)
                               ├── docs/        documenti e cartelle
                               ├── branding/    loghi
@@ -28,8 +28,8 @@ Portale di documentazione aziendale, containerizzato. Si accede con l'account **
 
 ### Accesso
 
-1. L'utente apre l'app e viene mandato al login di Keycloak (Authorization Code + PKCE).
-2. Al ritorno l'app verifica i token con le chiavi pubbliche del realm e legge i **ruoli** da `realm_access`, `resource_access` e dai claim in `ROLES_EXTRA_CLAIMS` (di default `roles` e `groups`).
+1. L'utente apre l'app e trova la **pagina di accesso dell'app** (logo, nome utente, password). Le credenziali le verifica Keycloak lato server (grant *password*, «Direct access grants»): l'utente non vede la pagina di Keycloak e la password non viene salvata. Con `LOGIN_MODE=redirect` si usa invece la pagina di Keycloak (Authorization Code + PKCE).
+2. L'app verifica i token con le chiavi pubbliche del realm e legge i **ruoli** da `realm_access`, `resource_access` e dai claim in `ROLES_EXTRA_CLAIMS` (di default `roles` e `groups`).
 3. I ruoli Keycloak vengono tradotti in **ruoli app** (vedi sotto). Il ruolo app con il livello più alto decide l'accesso: *nessuno* → pagina di accesso negato, *lettura*, *modifica*, *amministratore*.
 4. La sessione è un cookie firmato con `SECRET_KEY`. I ruoli si aggiornano a ogni login. «Esci» chiude anche la sessione su Keycloak.
 
@@ -166,6 +166,16 @@ Il file `.env.example` le contiene tutte, con commenti. Con Helm non si scrivono
 | `VIEWER_ROLES` | `ailadoc-viewer` | Ruoli del ruolo app «Lettori» creato al primo avvio |
 | `SESSION_MAX_AGE` | `28800` | Durata della sessione in secondi |
 
+### Pagina di login
+
+| Variabile | Default | Descrizione |
+|-----------|---------|-------------|
+| `LOGIN_MODE` | `form` | `form`: pagina di login dell'app, credenziali verificate da Keycloak lato server (il client deve avere *Direct access grants*). `redirect`: pagina di login di Keycloak |
+| `LOGIN_SSO_BUTTON` | `false` | Aggiunge «Accedi con Single Sign-On», che passa dalla pagina di Keycloak (provider esterni, passkey) |
+| `LOGIN_OTP` | `false` | Campo «Codice di verifica» per chi ha l'OTP attivo in Keycloak |
+| `PASSWORD_RESET_URL` | vuoto | Link «Password dimenticata?»: `keycloak` = reset del realm (serve *Forgot password* attivo nel realm), oppure un URL. Vuoto = nascosto |
+| `LOGIN_MAX_ATTEMPTS` | `10` | Tentativi falliti in 10 minuti per utente e IP prima di una pausa (per IP: 5 volte tanto). La difesa principale resta la *Brute force detection* di Keycloak |
+
 ### Applicazione e contenuti
 
 | Variabile | Default | Descrizione |
@@ -214,6 +224,13 @@ Il file `.env.example` le contiene tutte, con commenti. Con Helm non si scrivono
 | `DRAWIO_EDITOR_URL` | `https://embed.diagrams.net` | Editor draw.io incorporato (il browser degli utenti deve raggiungerlo). Per non dipendere da Internet: `docker run -p 8080:8080 jgraph/drawio` e il suo URL. Vuoto = diagrammi in sola visualizzazione |
 | `EMBED_ALLOWED_HOSTS` | Figma, Miro, Google Docs/Drive, SharePoint/OneDrive, Power BI, YouTube, Vimeo, Loom, diagrams.net, Lucid, Atlassian | Siti ammessi nella macro `embed`; `*.dominio` include i sottodomini |
 
+### Metriche
+
+| Variabile | Default | Descrizione |
+|-----------|---------|-------------|
+| `METRICS_ENABLED` | `true` | Espone `GET /metrics` in formato Prometheus |
+| `METRICS_TOKEN` | vuoto | Se impostato, `/metrics` richiede `Authorization: Bearer <token>`. Consigliato quando l'app è raggiungibile da Internet |
+
 ---
 
 ## Configurare Keycloak
@@ -221,10 +238,14 @@ Il file `.env.example` le contiene tutte, con commenti. Con Helm non si scrivono
 Nel realm crea un client OpenID Connect:
 
 - *Client authentication* attiva (client confidenziale) e *Standard flow* attivo; PKCE `S256` consigliato.
+- **Direct access grants** attivo: serve alla pagina di login dell'app (`LOGIN_MODE=form`, il default). Senza, la pagina lo segnala e propone l'accesso dalla pagina di Keycloak.
+- Nel realm: *Realm settings → Security defenses → Brute force detection* attiva. Con la pagina di login dell'app è Keycloak a bloccare i tentativi ripetuti sulle password.
 - **Valid redirect URIs**: `https://docs.azienda.it/auth/callback`
 - **Valid post logout redirect URIs**: `https://docs.azienda.it/*`
 - I ruoli: ruoli realm (es. `ailadoc-admin`, `ailadoc-editor`, `ailadoc-viewer`) oppure ruoli del client (il ruolo `editor` del client `ailadoc` viene letto sia come `editor` sia come `ailadoc:editor`).
 - Facoltativo: un mapper *Group Membership* con claim `groups`, per usare i gruppi Keycloak come ruoli.
+
+Alcuni casi passano comunque dalla pagina di Keycloak, perché richiedono un'interazione che solo Keycloak gestisce: utenti con un'*azione richiesta* (password temporanea da cambiare, email da verificare, OTP da configurare), il reset della password e i provider esterni. L'app li riconosce e propone «Continua» con il nome utente già compilato. Per renderli coerenti con l'app conviene un tema di login Keycloak con gli stessi colori e lo stesso logo.
 
 ---
 
@@ -271,14 +292,76 @@ docker build -f docker/Dockerfile --build-arg OFFICE_PREVIEW=false -t meticulo/a
 
 ---
 
+## Monitoraggio (Prometheus)
+
+`GET /metrics` espone le metriche in formato Prometheus. Non richiede il login: si protegge con `METRICS_TOKEN` (Bearer) oppure lasciandolo raggiungibile solo dalla rete interna.
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: ailadoc
+    metrics_path: /metrics
+    authorization:
+      credentials: "<METRICS_TOKEN>"      # ometti se il token è vuoto
+    static_configs:
+      - targets: ["ailadoc:8000"]
+```
+
+Con Kubernetes il chart può creare un `ServiceMonitor` (vedi il [README del chart](charts/ailadoc/README.md#metriche-prometheus)).
+
+| Metrica | Tipo | Etichette | Cosa misura |
+|---------|------|-----------|-------------|
+| `ailadoc_http_requests_total` | counter | `method`, `route`, `status` | Richieste completate |
+| `ailadoc_http_request_duration_seconds` | histogram | `method`, `route` | Tempo di risposta, fino all'ultimo byte (i download grandi includono il trasferimento) |
+| `ailadoc_http_requests_in_progress` | gauge | `method` | Richieste in corso |
+| `ailadoc_assistant_answer_duration_seconds` | histogram | `mode` (`ai`, `search`) | Tempo per rispondere a una domanda ad AIla |
+| `ailadoc_assistant_no_results_total` | counter | | Domande senza nessun documento trovato (lacune della documentazione) |
+| `ailadoc_assistant_rate_limited_total` | counter | | Domande rifiutate per il limite al minuto |
+| `ailadoc_llm_request_duration_seconds` | histogram | `provider`, `outcome` (`ok`, `error`) | Durata delle chiamate all'LLM |
+| `ailadoc_office_conversion_duration_seconds` | histogram | `outcome` (`ok`, `error`, `timeout`) | Conversioni PowerPoint/Word → PDF con LibreOffice |
+| `ailadoc_office_preview_cache_total` | counter | `result` (`hit`, `miss`) | Anteprime servite dalla cache o da convertire |
+| `ailadoc_logins_total` | counter | `method` (`form`, `sso`, `dev`), `result` | Accessi riusciti e falliti (`success`, `credentials`, `locked`, `rate`, `unavailable`, …) |
+| `ailadoc_keycloak_request_duration_seconds` | histogram | `operation` (`password_login`, `code_exchange`), `outcome` | Tempo di risposta di Keycloak; `error` = Keycloak non raggiungibile o client mal configurato (una password errata è `ok`) |
+| `ailadoc_background_task_duration_seconds` | histogram | `task` (`assistant_index`, `secret_scan`) | Durata delle scansioni dei documenti |
+| `ailadoc_background_task_last_run_timestamp_seconds` | gauge | `task` | Fine dell'ultima scansione |
+| `ailadoc_assistant_index_documents` / `_passages` | gauge | | Documenti e brani nell'indice di AIla |
+| `ailadoc_secret_findings` / `ailadoc_secret_files` | gauge | | Password trovate nei documenti e file coinvolti (escluse quelle ignorate) |
+| `ailadoc_app_info` | info | `llm_provider`, `login_mode`, `office_preview`, `secrets_scan` | Configurazione dell'istanza |
+| `process_*`, `python_*` | | | CPU, memoria, file aperti, garbage collector |
+
+`route` è il modello della route (`/d/{rel:path}`, `/api/assistant`…), mai il percorso reale: i nomi dei documenti non finiscono nelle metriche e il numero di serie resta basso. I percorsi inesistenti sono raggruppati in `<unmatched>`, i file statici in `/static`.
+
+Query utili:
+
+```promql
+# richieste al secondo per route (media su 5 minuti)
+sum by (route) (rate(ailadoc_http_requests_total[5m]))
+# tempo di risposta al 95° percentile per route
+histogram_quantile(0.95, sum by (le, route) (rate(ailadoc_http_request_duration_seconds_bucket[5m])))
+# percentuale di errori 5xx
+sum(rate(ailadoc_http_requests_total{status=~"5.."}[5m])) / sum(rate(ailadoc_http_requests_total[5m]))
+# latenza mediana dell'LLM e quota di chiamate fallite
+histogram_quantile(0.5, sum by (le) (rate(ailadoc_llm_request_duration_seconds_bucket[15m])))
+sum(rate(ailadoc_llm_request_duration_seconds_count{outcome="error"}[15m])) / sum(rate(ailadoc_llm_request_duration_seconds_count[15m]))
+# domande ad AIla all'ora e quante senza risultati
+sum(increase(ailadoc_assistant_answer_duration_seconds_count[1h]))
+increase(ailadoc_assistant_no_results_total[1h])
+# accessi falliti per esito nell'ultima ora
+sum by (result) (increase(ailadoc_logins_total{result!="success"}[1h]))
+```
+
+Le metriche sono per processo: l'immagine avvia un solo worker uvicorn; con più repliche Prometheus interroga ogni pod.
+
+---
+
 ## Loghi
 
 Due file in **`data/branding/`**, oppure caricali da *Amministrazione → Loghi* (con Helm anche da una ConfigMap):
 
 | File | Dove compare | Formato consigliato |
 |------|--------------|---------------------|
-| `app-logo.svg` (o `.png`) | in alto a sinistra (alto 32 px), icona del browser, login | **SVG** quadrato; in alternativa PNG trasparente **512×512** |
-| `company-logo.svg` (o `.png`) | in fondo al menu e nella pagina di accesso negato | **SVG** orizzontale; in alternativa PNG trasparente circa **600×160** |
+| `app-logo.svg` (o `.png`) | pagina di accesso (72 px), in alto a sinistra (alto 32 px), icona del browser | **SVG** quadrato; in alternativa PNG trasparente **512×512** |
+| `company-logo.svg` (o `.png`) | sotto il riquadro di accesso, in fondo al menu, nella pagina di accesso negato | **SVG** orizzontale; in alternativa PNG trasparente circa **600×160** |
 
 Sono accettati anche `.webp` e `.jpg`; se ci sono più formati vince l'SVG. Usa uno sfondo trasparente: il menu cambia colore tra tema chiaro e scuro.
 

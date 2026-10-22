@@ -9,6 +9,7 @@ import secrets
 import shutil
 import tempfile
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
@@ -21,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import assistant, auth, creator, db as dbm, plugins, preview, secretscan, storage
+from . import assistant, auth, creator, db as dbm, metrics, plugins, preview, secretscan, storage
 from .config import settings
 from .db import (LEVEL_LABELS, LEVELS, PRINCIPAL_TYPES, AclEntry, AppRole, GroupMember, LocalGroup, Restriction,
                  SecretIgnore, get_db)
@@ -61,6 +62,12 @@ async def lifespan(_app):
         log.warning("AUTH_DEV_MODE attivo: login senza Keycloak. NON usare in produzione!")
     if not settings.oidc_client_secret and not settings.dev_auth:
         log.info("OIDC_CLIENT_SECRET vuoto: uso client pubblico con PKCE.")
+    metrics.set_app_info(
+        llm_provider=assistant.llm_provider() if settings.assistant_enabled else "disabled",
+        login_mode="dev" if settings.dev_auth else settings.login_mode,
+        office_preview=str(settings.office_preview and preview.soffice_bin() is not None).lower(),
+        secrets_scan=str(settings.secrets_scan).lower(),
+    )
     yield
 
 
@@ -69,6 +76,8 @@ app.add_middleware(
     SessionMiddleware, secret_key=settings.secret_key, session_cookie="ailadoc_session",
     max_age=settings.session_max_age, same_site="lax", https_only=settings.cookie_secure,
 )
+if settings.metrics_enabled:  # aggiunto per ultimo = più esterno: misura anche la sessione
+    app.add_middleware(metrics.PrometheusMiddleware)
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 templates.env.globals.update(
@@ -246,6 +255,20 @@ async def healthz():
     return {"status": "ok"}
 
 
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics(request: Request):
+    """Metriche in formato Prometheus. Fuori dal login: protette da METRICS_TOKEN (Bearer) se impostato."""
+    if not settings.metrics_enabled:
+        return Response(status_code=404)
+    if settings.metrics_token:
+        scheme, _, token = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not secrets.compare_digest(token.strip().encode(),
+                                                                    settings.metrics_token.encode()):
+            return Response(status_code=401, headers={"WWW-Authenticate": 'Bearer realm="metrics"'})
+    body, content_type = await asyncio.to_thread(metrics.render)
+    return Response(body, media_type=content_type, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/assets/pygments.css", include_in_schema=False)
 async def pyg_css():
     return Response(pygments_css(), media_type="text/css", headers={"Cache-Control": "public, max-age=86400"})
@@ -267,13 +290,125 @@ async def favicon():
     return FileResponse(p) if p else FileResponse(APP_DIR / "static/img/app-logo-default.svg", media_type="image/svg+xml")
 
 
+# ---------------------------------------------------------------------- login
+LOGIN_WINDOW = 600  # secondi in cui si contano i tentativi falliti
+_login_failures: dict[str, list[float]] = {}
+
+
+def _safe_next(nxt: str) -> str:
+    return nxt if nxt.startswith("/") and not nxt.startswith("//") and "\\" not in nxt else "/"
+
+
+def _login_keys(request: Request, username: str) -> list[tuple[str, int]]:
+    ip = request.client.host if request.client else "?"
+    n = max(1, settings.login_max_attempts)
+    return [(f"u:{ip}:{username.lower()}", n), (f"ip:{ip}", n * 5)]
+
+
+def _login_blocked(keys: list[tuple[str, int]]) -> bool:
+    now = time.monotonic()
+    blocked = False
+    for key, limit in keys:
+        hits = [t for t in _login_failures.get(key, ()) if now - t < LOGIN_WINDOW]
+        if hits:
+            _login_failures[key] = hits
+        else:
+            _login_failures.pop(key, None)
+        blocked = blocked or len(hits) >= limit
+    return blocked
+
+
+def _login_failed(keys: list[tuple[str, int]]) -> None:
+    if len(_login_failures) > 20000:  # limite di memoria: la difesa principale resta Keycloak
+        _login_failures.clear()
+    now = time.monotonic()
+    for key, _ in keys:
+        _login_failures.setdefault(key, []).append(now)
+
+
+def _start_session(request: Request, user: dict, id_token: str) -> None:
+    request.session.clear()  # nuova sessione a ogni login (niente session fixation)
+    request.session["user"] = user
+    if len(id_token) < 2500:  # resta nel cookie di sessione (limite ~4 KB)
+        request.session["idt"] = id_token
+
+
+def _login_page(request: Request, nxt: str, username: str = "", error: str = "", kind: str = "",
+                status: int = 200) -> HTMLResponse:
+    return render(request, "login.html", {
+        "next": nxt, "username": username, "error": error, "error_kind": kind,
+        "reset_url": settings.password_reset_link,
+    }, status=status)
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login(request: Request, next: str = "/"):
-    if not next.startswith("/") or next.startswith("//"):
-        next = "/"
+    next = _safe_next(next)
     if settings.dev_auth:
         return render(request, "dev_login.html", {"next": next})
-    return RedirectResponse(auth.build_login_redirect(request.session, next), status_code=303)
+    if settings.login_mode == "redirect":
+        return RedirectResponse(auth.build_login_redirect(request.session, next), status_code=303)
+    if request.session.get("user"):
+        return RedirectResponse(next, status_code=303)
+    return _login_page(request, next)
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login_submit(request: Request, username: str = Form(""), password: str = Form(""), otp: str = Form(""),
+                       next: str = Form("/"), csrf: str = Form("")):
+    next = _safe_next(next)
+    if settings.dev_auth or settings.login_mode != "form":
+        return Response(status_code=404)
+    username = username.strip()[:255]
+    expected = request.session.get("csrf")
+    if not expected or not secrets.compare_digest(csrf, expected):
+        metrics.LOGINS.labels(method="form", result="csrf").inc()
+        return _login_page(request, next, username, "La pagina è rimasta aperta a lungo: inserisci di nuovo la password.",
+                           "csrf", 400)
+    if not username or not password:
+        metrics.LOGINS.labels(method="form", result="missing").inc()
+        return _login_page(request, next, username, "Inserisci nome utente e password.", "missing", 400)
+    keys = _login_keys(request, username)
+    if _login_blocked(keys):
+        metrics.LOGINS.labels(method="form", result="rate").inc()
+        return _login_page(request, next, username, "Troppi tentativi in poco tempo. Attendi qualche minuto e riprova.",
+                           "rate", 429)
+    try:
+        with metrics.timed(metrics.KEYCLOAK_DURATION, operation="password_login", outcome="ok") as t:
+            try:
+                user, id_token = await auth.password_login(username, password, "".join(otp.split())[:12])
+            except auth.LoginError as e:  # risposta di Keycloak valida (es. password errata): non è un guasto
+                t["outcome"] = "error" if e.kind in ("client", "unavailable") else "ok"
+                raise
+    except auth.LoginError as e:
+        metrics.LOGINS.labels(method="form", result=e.kind).inc()
+        if e.kind in ("credentials", "locked", "disabled"):
+            _login_failed(keys)
+            log.info("Accesso non riuscito per %r da %s: %s", username, keys[1][0][3:], e.kind)
+        status = {"credentials": 401, "locked": 423, "disabled": 403, "unavailable": 503}.get(e.kind, 400)
+        return _login_page(request, next, username, str(e), e.kind, status)
+    except auth.AuthError as e:
+        metrics.LOGINS.labels(method="form", result="token").inc()
+        log.warning("Token di Keycloak non validi: %s", e)
+        return _login_page(request, next, username, "Non è stato possibile verificare l'accesso. Riprova.", "token", 502)
+    except Exception:  # noqa: BLE001
+        metrics.LOGINS.labels(method="form", result="unavailable").inc()
+        log.exception("Errore nel login con credenziali")
+        return _login_page(request, next, username, "Il servizio di accesso non risponde. Riprova tra qualche istante.",
+                           "unavailable", 502)
+    metrics.LOGINS.labels(method="form", result="success").inc()
+    _login_failures.pop(keys[0][0], None)
+    _start_session(request, user, id_token)
+    return RedirectResponse(next, status_code=303)
+
+
+@app.get("/login/sso")
+async def login_sso(request: Request, next: str = "/", login_hint: str = ""):
+    """Pagina di Keycloak: provider esterni, passkey e azioni richieste (es. cambio password al primo accesso)."""
+    if settings.dev_auth:
+        return RedirectResponse("/login", status_code=303)
+    return RedirectResponse(auth.build_login_redirect(request.session, _safe_next(next), login_hint.strip()[:255]),
+                            status_code=303)
 
 
 DEV_PRESETS = {
@@ -289,29 +424,36 @@ async def dev_login(request: Request, username: str = Form(...), roles: str = Fo
     if not settings.dev_auth:
         return Response(status_code=404)
     name = DEV_PRESETS.get(username, (username, []))[0]
+    metrics.LOGINS.labels(method="dev", result="success").inc()
     request.session.clear()
     request.session["user"] = {
         "sub": f"dev-{username}", "username": username, "email": f"{username}@example.com", "name": name,
         "roles": sorted({r.strip() for r in roles.split(",") if r.strip()}), "dev": True,
     }
-    return RedirectResponse(next if next.startswith("/") and not next.startswith("//") else "/", status_code=303)
+    return RedirectResponse(_safe_next(next), status_code=303)
 
 
 @app.get("/auth/callback")
 async def callback(request: Request, code: str = "", state: str = "", error: str = "", error_description: str = ""):
     if error:
+        metrics.LOGINS.labels(method="sso", result="denied").inc()
         return render(request, "error.html", {"message": f"Keycloak: {error_description or error}"}, status=400)
     try:
-        user, nxt, id_token = await auth.handle_callback(request.session, code, state)
+        with metrics.timed(metrics.KEYCLOAK_DURATION, operation="code_exchange", outcome="ok") as t:
+            try:
+                user, nxt, id_token = await auth.handle_callback(request.session, code, state)
+            except auth.AuthError:  # state scaduto, token rifiutato...: Keycloak ha risposto
+                t["outcome"] = "ok"
+                raise
     except auth.AuthError as e:
+        metrics.LOGINS.labels(method="sso", result="invalid").inc()
         return render(request, "error.html", {"message": str(e)}, status=400)
     except Exception:  # noqa: BLE001
+        metrics.LOGINS.labels(method="sso", result="unavailable").inc()
         log.exception("Errore nel callback OIDC")
         return render(request, "error.html", {"message": "Impossibile contattare Keycloak."}, status=502)
-    request.session.clear()
-    request.session["user"] = user
-    if len(id_token) < 2500:  # resta nel cookie di sessione (limite ~4 KB)
-        request.session["idt"] = id_token
+    metrics.LOGINS.labels(method="sso", result="success").inc()
+    _start_session(request, user, id_token)
     return RedirectResponse(nxt, status_code=303)
 
 
@@ -322,6 +464,11 @@ async def logout(request: Request):
     request.session.clear()
     if settings.dev_auth or was_dev:
         return RedirectResponse("/login", status_code=303)
+    if settings.login_mode == "form":
+        flash(request, "Sei uscito. A presto!")
+        if not id_token:  # senza id_token_hint Keycloak mostrerebbe la sua pagina di conferma
+            return RedirectResponse("/login", status_code=303)
+    # chiude la sessione su Keycloak e torna subito all'app (con id_token_hint non c'è nessuna pagina intermedia)
     return RedirectResponse(auth.build_logout_redirect(id_token), status_code=303)
 
 
@@ -528,9 +675,14 @@ async def api_assistant(request: Request, perms: Perms = Depends(get_perms)):
     history = [{"role": str(h.get("role", "")), "content": str(h.get("content", ""))}
                for h in raw_history[-10:] if isinstance(h, dict)]
     if not assistant.allow_request(perms.user.sub or perms.user.username):
+        metrics.ASSISTANT_RATE_LIMITED.inc()
         return JSONResponse({"error": "Troppe domande in poco tempo: riprova tra un minuto."}, status_code=429)
+    started = time.perf_counter()
     result = await asyncio.to_thread(assistant.answer, question, history, perms.can_view,
                                      perms.user.name or perms.user.username)
+    metrics.ASSISTANT_DURATION.labels(mode=result["mode"]).observe(time.perf_counter() - started)
+    if not result["sources"]:
+        metrics.ASSISTANT_NO_RESULTS.inc()
     log.info("Assistente: %s ha chiesto %r -> %d fonti (%s)", perms.user.username, question[:120],
              len(result["sources"]), result["mode"])
     return JSONResponse(result, headers={"Cache-Control": "no-store"})

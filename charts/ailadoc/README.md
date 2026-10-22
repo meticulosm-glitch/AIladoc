@@ -18,6 +18,7 @@ docker buildx build -f docker/Dockerfile --platform linux/amd64 -t meticulo/aila
 Nel realm crea un client OpenID Connect:
 
 - *Client authentication* attiva (confidenziale), *Standard flow* attivo, PKCE `S256`.
+- **Direct access grants** attivo, per la pagina di login dell'app (`login.mode: form`, il default). Nel realm attiva anche la *Brute force detection*.
 - **Valid redirect URIs**: `https://docs.example.com/auth/callback`
 - **Valid post logout redirect URIs**: `https://docs.example.com/*`
 - Ruoli realm (o del client) per amministratori, editor e lettori, per esempio `ailadoc-admin`, `ailadoc-editor`, `ailadoc-viewer`.
@@ -73,6 +74,7 @@ Le stringhe di connessione e le credenziali **non** finiscono nella ConfigMap ma
 | `DATABASE_URL` | `secrets.databaseUrl` | facoltativa (Postgres) |
 | `ASSISTANT_BASE_URL` | `assistant.baseUrl` | facoltativa |
 | `ASSISTANT_API_KEY` | `assistant.apiKey` | facoltativa |
+| `METRICS_TOKEN` | `metrics.token` | facoltativa: token Bearer per `/metrics` |
 
 Il Secret creato dal chart ha `helm.sh/resource-policy: keep`, così `helm uninstall` non perde la chiave di sessione.
 
@@ -91,7 +93,7 @@ secrets:
   existingSecret: ailadoc-secrets
 ```
 
-Con `secrets.existingSecret` il chart non crea il proprio Secret e ignora `keycloak.url/internalUrl/realm/clientId/clientSecret`, `assistant.baseUrl/apiKey`, `secrets.secretKey/databaseUrl`.
+Con `secrets.existingSecret` il chart non crea il proprio Secret e ignora `keycloak.url/internalUrl/realm/clientId/clientSecret`, `assistant.baseUrl/apiKey`, `secrets.secretKey/databaseUrl`, `metrics.token`.
 
 ### Keycloak con CA interna
 
@@ -180,6 +182,24 @@ plugins:
 
 Il visualizzatore draw.io, KaTeX e mermaid sono già nell'immagine. Con `drawioEditorUrl` esterno (predefinito `https://embed.diagrams.net`) il browser degli utenti deve poter raggiungere quel sito; il diagramma passa dal browser all'iframe e torna ad AIladoc, non viene caricato su draw.io.
 
+## Metriche Prometheus
+
+Il pod espone `GET /metrics` sulla porta `http` (elenco delle metriche e query d'esempio nel [README principale](../../README.md#monitoraggio-prometheus)).
+
+```yaml
+metrics:
+  enabled: true
+  token: "un-token-lungo-e-casuale"     # va nel Secret come METRICS_TOKEN
+  serviceMonitor:
+    enabled: true                       # richiede le CRD di Prometheus Operator
+    labels:
+      release: kube-prometheus-stack    # quelle del serviceMonitorSelector del vostro Prometheus
+```
+
+L'ingress pubblica tutta l'app, `/metrics` compreso: con un ingress raggiungibile da Internet imposta `metrics.token`. Il ServiceMonitor lo legge dal Secret dell'app e lo invia come `Authorization: Bearer`. Con `secrets.existingSecret` aggiungi la chiave `METRICS_TOKEN` a quel Secret e imposta `metrics.existingSecretHasToken: true`.
+
+Senza Prometheus Operator: `metrics.scrapeAnnotations: true` aggiunge al pod le annotazioni `prometheus.io/scrape|port|path` (non portano il token: usale con `metrics.token` vuoto e `/metrics` non esposto all'esterno).
+
 ## Valori principali
 
 | Valore | Default | Descrizione |
@@ -192,11 +212,16 @@ Il visualizzatore draw.io, KaTeX e mermaid sono già nell'immagine. Con `drawioE
 | `keycloak.caBundle.*` | vuoto | CA interna per Keycloak |
 | `secrets.existingSecret` | `""` | Secret esistente con tutte le chiavi di connessione |
 | `secrets.secretKey` / `secrets.databaseUrl` | generata / `""` | → Secret |
+| `login.mode` / `ssoButton` / `otp` | `form` / `false` / `false` | pagina di login dell'app o di Keycloak (ConfigMap) |
+| `login.passwordResetUrl` / `maxAttempts` | `""` / `10` | link «Password dimenticata?» e limite tentativi (ConfigMap) |
 | `secretsScan.enabled` / `policy` / `rescanSeconds` | `true` / `warn` / `30` | controllo password nei documenti (ConfigMap) |
 | `assistant.enabled` / `name` / `suggestions` | `true` / `AIla` / `[]` | ConfigMap |
 | `assistant.llm` / `model` | `none` / `""` | ConfigMap |
 | `assistant.baseUrl` / `apiKey` | `""` | → Secret |
 | `plugins.enabled` / `drawioEditorUrl` / `embedAllowedHosts` | `[all]` / `https://embed.diagrams.net` / `[]` | plugin delle pagine (ConfigMap) |
+| `metrics.enabled` / `token` | `true` / `""` | `/metrics` (ConfigMap) e token Bearer (→ Secret) |
+| `metrics.serviceMonitor.enabled` / `interval` / `labels` | `false` / `30s` / `{}` | ServiceMonitor per Prometheus Operator |
+| `metrics.scrapeAnnotations` | `false` | annotazioni `prometheus.io/*` sul pod |
 | `app.adminRoles` / `editorRoles` / `viewerRoles` | `ailadoc-admin` / `-editor` / `-viewer` | ruoli Keycloak |
 | `app.baseUrl` | dall'ingress | URL pubblico dell'app |
 | `app.maxUploadMb` | `100` | allinealo all'annotazione `proxy-body-size` dell'ingress |

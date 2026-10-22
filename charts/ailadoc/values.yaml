@@ -60,6 +60,22 @@ keycloak:
     key: ca.crt
 
 # ---------------------------------------------------------------------------
+# Pagina di login
+login:
+  # form: pagina dell'app, credenziali verificate da Keycloak lato server
+  #       (sul client Keycloak serve "Direct access grants")
+  # redirect: pagina di login di Keycloak
+  mode: form
+  # Aggiunge "Accedi con Single Sign-On" (pagina di Keycloak)
+  ssoButton: false
+  # Campo "Codice di verifica" per chi ha l'OTP attivo
+  otp: false
+  # "" = nascosto, "keycloak" = reset del realm, oppure un URL
+  passwordResetUrl: ""
+  # Tentativi falliti in 10 minuti per utente e IP
+  maxAttempts: 10
+
+# ---------------------------------------------------------------------------
 # Controllo password e credenziali scritte nei documenti
 secretsScan:
   enabled: true
@@ -97,6 +113,26 @@ plugins:
   embedAllowedHosts: []
 
 # ---------------------------------------------------------------------------
+# Metriche Prometheus su GET /metrics (porta http del pod)
+metrics:
+  enabled: true
+  # Token Bearer richiesto da /metrics (va nel Secret come METRICS_TOKEN). Consigliato: l'ingress
+  # pubblica tutta l'app, /metrics compreso. Vuoto = endpoint aperto.
+  token: ""
+  # Con secrets.existingSecret: true se quel Secret contiene METRICS_TOKEN (lo usa il ServiceMonitor)
+  existingSecretHasToken: false
+  # Annotazioni prometheus.io/scrape|port|path sul pod (scrape "classico" senza Prometheus Operator;
+  # non passano il token: usale con token vuoto e /metrics non esposto pubblicamente)
+  scrapeAnnotations: false
+  # ServiceMonitor per Prometheus Operator / kube-prometheus-stack (richiede le sue CRD)
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    # etichette richieste dal selettore del vostro Prometheus (es. release: kube-prometheus-stack)
+    labels: {}
+
+# ---------------------------------------------------------------------------
 # Secret dell'app (stringhe di connessione e credenziali).
 secrets:
   # Secret gestito da voi (Sealed Secrets, External Secrets, Vault...). Se impostato,
@@ -111,6 +147,7 @@ secrets:
   #   DATABASE_URL          (facoltativa, es. postgresql+psycopg://user:pass@host/db)
   #   ASSISTANT_BASE_URL    (facoltativa)
   #   ASSISTANT_API_KEY     (facoltativa)
+  #   METRICS_TOKEN         (facoltativa, vedi metrics.existingSecretHasToken)
   existingSecret: ""
   # Firma dei cookie di sessione. Vuota = generata al primo install e mantenuta negli upgrade.
   secretKey: ""

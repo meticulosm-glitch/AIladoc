@@ -12,6 +12,32 @@
     });
   });
 
+  // Login: mostra/nascondi password e niente doppio invio
+  document.querySelectorAll("[data-pw-toggle]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var input = b.parentNode.querySelector("input");
+      var show = input.type === "password";
+      input.type = show ? "text" : "password";
+      b.setAttribute("aria-pressed", show ? "true" : "false");
+      b.setAttribute("aria-label", show ? "Nascondi password" : "Mostra password");
+      b.title = b.getAttribute("aria-label");
+      input.focus();
+    });
+  });
+  document.querySelectorAll("[data-login-form]").forEach(function (f) {
+    f.addEventListener("submit", function () {
+      var b = f.querySelector("[data-login-submit]");
+      if (!b) return;
+      setTimeout(function () { b.disabled = true; b.querySelector("[data-label]").textContent = "Accesso in corso…"; }, 0);
+    });
+  });
+  window.addEventListener("pageshow", function (e) {  // tornando indietro il pulsante torna attivo
+    if (!e.persisted) return;
+    document.querySelectorAll("[data-login-submit]").forEach(function (b) {
+      b.disabled = false; b.querySelector("[data-label]").textContent = "Accedi";
+    });
+  });
+
   // Menu laterale su mobile
   document.querySelectorAll("[data-toggle-nav]").forEach(function (b) {
     b.addEventListener("click", function () { document.body.classList.toggle("nav-open"); });

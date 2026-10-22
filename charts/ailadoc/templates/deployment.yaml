@@ -25,7 +25,12 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- if not .Values.secrets.existingSecret }}
-        checksum/secret-values: {{ list .Values.keycloak .Values.assistant.baseUrl .Values.assistant.apiKey .Values.secrets | toJson | sha256sum }}
+        checksum/secret-values: {{ list .Values.keycloak .Values.assistant.baseUrl .Values.assistant.apiKey .Values.secrets .Values.metrics.token | toJson | sha256sum }}
+        {{- end }}
+        {{- if and .Values.metrics.enabled .Values.metrics.scrapeAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
         {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}

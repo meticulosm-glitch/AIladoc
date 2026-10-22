@@ -36,7 +36,7 @@ from pathlib import Path
 from urllib.parse import quote
 from xml.etree import ElementTree as ET
 
-from . import storage
+from . import metrics, storage
 from .config import settings
 
 log = logging.getLogger("ailadoc.secretscan")
@@ -504,23 +504,24 @@ class Registry:
         if not self._lock.acquire(blocking=wait):
             return
         try:
-            self._load()
-            found = self._walk()
-            changed = False
-            for rel in list(self.docs):
-                if rel not in found:
-                    del self.docs[rel]
+            with metrics.background_task("secret_scan"):
+                self._load()
+                found = self._walk()
+                changed = False
+                for rel in list(self.docs):
+                    if rel not in found:
+                        del self.docs[rel]
+                        changed = True
+                for rel, (fp, sig) in found.items():
+                    cur = self.docs.get(rel)
+                    if cur and cur[0] == sig:
+                        continue
+                    self.docs[rel] = (sig, [f for f in scan_file(fp)])
                     changed = True
-            for rel, (fp, sig) in found.items():
-                cur = self.docs.get(rel)
-                if cur and cur[0] == sig:
-                    continue
-                self.docs[rel] = (sig, [f for f in scan_file(fp)])
-                changed = True
-            if changed:
-                self._save()
-            self._last = time.monotonic()
-            self.last_full_scan = time.time()
+                if changed:
+                    self._save()
+                self._last = time.monotonic()
+                self.last_full_scan = time.time()
         finally:
             self._lock.release()
 

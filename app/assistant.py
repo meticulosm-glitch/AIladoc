@@ -34,7 +34,7 @@ from xml.etree import ElementTree as ET
 import httpx
 from markdown.extensions.toc import slugify
 
-from . import storage
+from . import metrics, storage
 from .config import settings
 
 log = logging.getLogger("ailadoc.assistant")
@@ -402,7 +402,7 @@ class DocIndex:
         now = time.monotonic()
         if not force and now - self._last_scan < settings.assistant_rescan_seconds:
             return
-        with self._lock:
+        with self._lock, metrics.background_task("assistant_index"):
             found = self._scan()
             changed = False
             for rel in list(self.docs):
@@ -623,6 +623,11 @@ def llm_provider() -> str:
 
 def _call_llm(system: str, messages: list[dict]) -> str:
     provider = llm_provider()
+    with metrics.timed(metrics.LLM_DURATION, provider=provider, outcome="ok"):
+        return _call_llm_raw(provider, system, messages)
+
+
+def _call_llm_raw(provider: str, system: str, messages: list[dict]) -> str:
     timeout = httpx.Timeout(settings.assistant_timeout, connect=10)
     try:
         if provider == "anthropic":

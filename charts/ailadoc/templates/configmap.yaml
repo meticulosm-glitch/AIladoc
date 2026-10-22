@@ -26,6 +26,11 @@ data:
   {{- if include "ailadoc.caMounted" . }}
   OIDC_CA_FILE: "/etc/ailadoc/ca/{{ .Values.keycloak.caBundle.key }}"
   {{- end }}
+  LOGIN_MODE: {{ .Values.login.mode | quote }}
+  LOGIN_SSO_BUTTON: {{ .Values.login.ssoButton | toString | quote }}
+  LOGIN_OTP: {{ .Values.login.otp | toString | quote }}
+  PASSWORD_RESET_URL: {{ .Values.login.passwordResetUrl | quote }}
+  LOGIN_MAX_ATTEMPTS: {{ .Values.login.maxAttempts | toString | quote }}
   SECRETS_SCAN: {{ .Values.secretsScan.enabled | toString | quote }}
   SECRETS_POLICY: {{ .Values.secretsScan.policy | quote }}
   SECRETS_RESCAN_SECONDS: {{ .Values.secretsScan.rescanSeconds | toString | quote }}
@@ -41,4 +46,5 @@ data:
   {{- with .Values.plugins.embedAllowedHosts }}
   EMBED_ALLOWED_HOSTS: {{ join "," . | quote }}
   {{- end }}
+  METRICS_ENABLED: {{ .Values.metrics.enabled | toString | quote }}
   AUTH_DEV_MODE: "false"

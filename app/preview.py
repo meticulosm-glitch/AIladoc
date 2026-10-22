@@ -11,6 +11,7 @@ import tempfile
 import threading
 from pathlib import Path
 
+from . import metrics
 from .config import settings
 
 log = logging.getLogger("ailadoc.preview")
@@ -43,12 +44,16 @@ def office_to_pdf(src: Path) -> Path | None:
         return None
     out = _cache_file(src)
     if out.exists():
+        metrics.OFFICE_CACHE.labels(result="hit").inc()
         return out
     out.parent.mkdir(parents=True, exist_ok=True)
     with _lock:  # LibreOffice non gradisce istanze concorrenti sullo stesso profilo
         if out.exists():
+            metrics.OFFICE_CACHE.labels(result="hit").inc()
             return out
-        with tempfile.TemporaryDirectory() as tmp:
+        metrics.OFFICE_CACHE.labels(result="miss").inc()
+        with tempfile.TemporaryDirectory() as tmp, \
+                metrics.timed(metrics.OFFICE_CONVERSION, outcome="ok") as t:
             tmpd = Path(tmp)
             local = tmpd / ("input." + src.name.rsplit(".", 1)[-1].lower())
             shutil.copyfile(src, local)
@@ -58,10 +63,12 @@ def office_to_pdf(src: Path) -> Path | None:
                 subprocess.run(cmd, check=True, timeout=settings.office_timeout,
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             except (subprocess.SubprocessError, OSError) as e:
+                t["outcome"] = "timeout" if isinstance(e, subprocess.TimeoutExpired) else "error"
                 log.warning("Conversione fallita per %s: %s", src, e)
                 return None
             produced = tmpd / "input.pdf"
             if not produced.exists():
+                t["outcome"] = "error"
                 return None
             shutil.move(str(produced), out)
     return out

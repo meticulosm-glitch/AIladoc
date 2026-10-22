@@ -6,7 +6,7 @@
   <title>{% block title %}{{ title or settings.app_name }}{% endblock %} · {{ settings.app_name }}</title>
   <link rel="icon" href="{{ app_logo }}">
   <script>try{var t=localStorage.getItem('ailadoc-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-  <link rel="stylesheet" href="/static/css/app.css?v=6">
+  <link rel="stylesheet" href="/static/css/app.css?v=7">
   <link rel="stylesheet" href="/assets/pygments.css">
   <link rel="stylesheet" href="/static/css/plugins.css?v=1">
   {% block head %}{% endblock %}
@@ -42,6 +42,7 @@
   </ul>
 {%- endmacro %}
 
+{% block topbar %}
 <header class="topbar">
   {% if tree %}<button class="icon-btn only-mobile" type="button" data-toggle-nav aria-label="Menu">{{ icon('menu') }}</button>{% endif %}
   <a class="brand" href="/">
@@ -77,6 +78,7 @@
     {% endif %}
   </div>
 </header>
+{% endblock %}
 
 <div class="layout {% if not tree %}no-sidebar{% endif %}">
   {% if tree %}
@@ -100,7 +102,7 @@
   <div class="scrim only-mobile" data-toggle-nav></div>
   {% endif %}
   <main class="main">
-    {% for kind, msg in flashes %}<div class="flash {{ kind }}" role="status">{{ msg }}</div>{% endfor %}
+    {% block flashes %}{% for kind, msg in flashes %}<div class="flash {{ kind }}" role="status">{{ msg }}</div>{% endfor %}{% endblock %}
     {% block content %}{% endblock %}
   </main>
 </div>
@@ -137,7 +139,7 @@
 </aside>
 {% endif %}
 <script>window.AILADOC = {csrf: "{{ csrf }}"};</script>
-<script src="/static/js/app.js?v=3"></script>
+<script src="/static/js/app.js?v=4"></script>
 <script src="/static/js/plugins.js?v=1"></script>
 {% if user and user.global_level > 0 and settings.assistant_enabled %}<script src="/static/js/assistant.js?v=1"></script>{% endif %}
 {% if user and user.can_edit and tree and request.state.perms is defined %}{% include "_create.html" %}{% endif %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Accedi{% endblock %}
+{% block body_class %}login-page{% endblock %}
+{% block topbar %}
+<div class="login-corner">
+  <button class="icon-btn" type="button" data-theme-toggle aria-label="Cambia tema">{{ icon('moon', 'when-light') }}{{ icon('sun', 'when-dark') }}</button>
+</div>
+{% endblock %}
+{% block flashes %}{% endblock %}
+{% block content %}
+{% set sso_href = '/login/sso?next=' ~ (next|urlencode) %}
+<section class="login" aria-labelledby="login-title">
+  <div class="login-card">
+    <header class="login-head">
+      <img src="{{ app_logo }}" alt="" class="login-logo" width="72" height="72">
+      <h1 id="login-title">{{ settings.app_name }}</h1>
+      <p>Accedi con il tuo account {{ settings.company_name or 'aziendale' }}</p>
+    </header>
+
+    {% for kind, msg in flashes %}<div class="login-note {{ kind }}" role="status">{{ msg }}</div>{% endfor %}
+
+    {% if error %}
+    <div class="login-alert {% if error_kind in ('setup', 'not_allowed') %}info{% endif %}" role="alert" id="login-error">
+      {{ icon('alert', size=18) }}
+      <div>
+        <p>{{ error }}</p>
+        {% if error_kind in ('setup', 'not_allowed') %}
+        <a class="btn primary small" href="{{ sso_href }}{% if username %}&amp;login_hint={{ username|urlencode }}{% endif %}">Continua {{ icon('move', size=15) }}</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/login" class="login-form" data-login-form>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="field">Nome utente o email
+        <input name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" autocorrect="off"
+               spellcheck="false" required maxlength="255" {% if not username %}autofocus{% endif %}
+               {% if error and error_kind == 'credentials' %}aria-invalid="true" aria-describedby="login-error"{% endif %}>
+      </label>
+      <div class="field">
+        <span class="field-row">
+          <label for="login-password">Password</label>
+          {% if reset_url %}<a href="{{ reset_url }}" class="field-link">Password dimenticata?</a>{% endif %}
+        </span>
+        <span class="password-wrap">
+          <input id="login-password" type="password" name="password" autocomplete="current-password" required
+                 {% if username %}autofocus{% endif %}
+                 {% if error and error_kind == 'credentials' %}aria-invalid="true" aria-describedby="login-error"{% endif %}>
+          <button type="button" class="pw-toggle" data-pw-toggle aria-label="Mostra password" aria-pressed="false" title="Mostra password">
+            {{ icon('eye', 'pw-show', size=17) }}{{ icon('eye-off', 'pw-hide', size=17) }}
+          </button>
+        </span>
+      </div>
+      {% if settings.login_otp %}
+      <label class="field">
+        <span>Codice di verifica <small class="muted">· solo se attivo sul tuo account</small></span>
+        <input name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="123456">
+      </label>
+      {% endif %}
+      <button class="btn primary login-submit" type="submit" data-login-submit>
+        <span class="login-spinner" aria-hidden="true"></span><span data-label>Accedi</span>
+      </button>
+    </form>
+
+    {% if settings.login_sso_button %}
+    <div class="login-divider"><span>oppure</span></div>
+    <a class="btn login-sso" href="{{ sso_href }}">{{ icon('key', size=16) }} Accedi con Single Sign-On</a>
+    {% endif %}
+  </div>
+
+  <footer class="login-foot">
+    {% if company_logo %}<img src="{{ company_logo }}" alt="{{ settings.company_name }}" class="login-company">
+    {% elif settings.company_name %}<span>{{ settings.company_name }}</span>{% endif %}
+  </footer>
+</section>
+{% endblock %}

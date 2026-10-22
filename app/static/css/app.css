@@ -634,3 +634,73 @@ button.link { border: 0; background: none; padding: 0; font: inherit; color: var
 .nowrap { white-space: nowrap; }
 .btn.ghost.small { color: var(--text-2); }
 @media (max-width: 760px) { .secret-doc .table thead { display: none; } .secret-doc .table td { display: block; border: 0; padding: 4px 0; } .secret-doc .table tr { display: block; border-bottom: 1px solid var(--border); padding: 8px 0; } .secret-rescan { margin-left: 0; } }
+
+/* ---------- pagina di login ---------- */
+body.login-page {
+  background:
+    radial-gradient(900px 520px at 50% -12%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+.login-page .layout { min-height: 100vh; min-height: 100dvh; }
+.login-page .main { display: grid; place-items: center; padding: 56px 16px 32px; }
+.login-corner { position: fixed; top: 12px; right: 12px; z-index: 5; }
+.login { width: 100%; max-width: 400px; display: grid; gap: 28px; }
+.login-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow);
+  padding: 36px 32px 30px;
+}
+.login-head { text-align: center; margin-bottom: 26px; }
+.login-logo { display: block; width: 72px; height: 72px; object-fit: contain; margin: 0 auto 16px; }
+.login-head h1 { font-size: 24px; letter-spacing: -.02em; line-height: 1.2; margin: 0 0 6px; }
+.login-head p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.login-form .field { margin-bottom: 16px; }
+.login-form input { min-height: 42px; font-size: 15px; padding: 9px 12px; }
+.field-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.field-link { font-size: 13px; font-weight: 500; }
+.password-wrap { position: relative; display: block; }
+.password-wrap input { padding-right: 46px; }
+.pw-toggle {
+  position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 36px; height: 34px; border: 0;
+  border-radius: 7px; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer;
+}
+.pw-toggle:hover { color: var(--text); background: var(--surface-2); }
+.pw-toggle .pw-hide, .pw-toggle[aria-pressed="true"] .pw-show { display: none; }
+.pw-toggle[aria-pressed="true"] .pw-hide { display: inline; }
+.login-submit { width: 100%; justify-content: center; height: 44px; font-size: 15px; margin-top: 6px; border-radius: 9px; }
+.login-submit[disabled] { opacity: .75; cursor: progress; }
+.login-spinner {
+  display: none; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 35%, transparent); border-top-color: currentColor;
+  animation: login-spin .7s linear infinite;
+}
+.login-submit[disabled] .login-spinner { display: inline-block; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+.login-alert {
+  display: flex; gap: 10px; align-items: flex-start; margin-bottom: 20px; padding: 11px 13px; border-radius: 10px;
+  font-size: 14px; line-height: 1.45; color: var(--danger); background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+}
+.login-alert .ic { margin-top: 1px; }
+.login-alert p { margin: 0; }
+.login-alert .btn { margin-top: 10px; }
+.login-alert.info { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+.login-note {
+  margin-bottom: 20px; padding: 10px 13px; border-radius: 10px; font-size: 14px; text-align: center;
+  background: var(--accent-soft); color: var(--text);
+}
+.login-note.error { background: var(--danger-soft); color: var(--danger); }
+.login-divider {
+  display: flex; align-items: center; gap: 12px; margin: 22px 0 16px; color: var(--muted);
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+}
+.login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.login-sso { width: 100%; justify-content: center; height: 42px; }
+.login-foot { text-align: center; color: var(--muted); font-size: 13px; }
+.login-company { max-height: 36px; max-width: 180px; opacity: .75; }
+@media (max-width: 480px) {
+  .login-page .main { padding-top: 64px; place-items: start center; }
+  .login-card { padding: 28px 20px 24px; border-radius: 14px; }
+  .login-form input { font-size: 16px; } /* niente zoom automatico su iOS */
+}
+@media (prefers-reduced-motion: reduce) { .login-spinner { animation-duration: 2s; } }
