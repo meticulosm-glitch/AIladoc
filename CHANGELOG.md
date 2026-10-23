@@ -6,6 +6,14 @@ La versione del chart Helm (`charts/ailadoc/Chart.yaml`) è indicata a parte.
 
 Formato ispirato a [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/); versioni [SemVer](https://semver.org/lang/it/).
 
+## [Non rilasciato]
+
+Chart `0.3.1`.
+
+### Corretto
+- Chart: `appVersion` era rimasta `0.1.0`, un tag mai pubblicato. Senza `image.tag` nei values il pod e il Job delle password andavano in `ErrImagePull` (`meticulo/ailadoc:0.1.0: not found`). Ora è `4.0.0`.
+- Il workflow di pubblicazione avvisa quando il tag git non corrisponde all'`appVersion` del chart.
+
 ## [4.0.0] - 23-10-2026
 
 Chart `0.3.0`.
@@ -80,7 +88,8 @@ Prima release. Chart `0.1.0`.
 - Loghi personalizzabili, Docker Compose e chart Helm (`ailadoc`) con Secret per le credenziali, PVC, Ingress e pod non-root.
 - Build dell'immagine da `docker/Dockerfile` e workflow GitHub che a ogni tag pubblica `meticulo/ailadoc:<tag>` su Docker Hub.
 
-[Non rilasciato]: ../../compare/3.0.1...HEAD
+[Non rilasciato]: ../../compare/4.0.0...HEAD
+[4.0.0]: ../../compare/3.0.1...4.0.0
 [3.0.1]: ../../compare/3.0.0...3.0.1
 [3.0.0]: ../../compare/2.0.1...3.0.0
 [2.0.1]: ../../compare/2.0.0...2.0.1

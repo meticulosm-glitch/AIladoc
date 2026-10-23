@@ -32,6 +32,15 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
+      # Senza image.tag nei values il chart usa appVersion: se non è un tag pubblicato il pod
+      # va in ErrImagePull. Avviso (non blocca la pubblicazione dell'immagine).
+      - name: Check chart appVersion
+        run: |
+          app_version=$(sed -n 's/^appVersion: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' charts/ailadoc/Chart.yaml)
+          if [ "$app_version" != "$GITHUB_REF_NAME" ]; then
+            echo "::warning file=charts/ailadoc/Chart.yaml::appVersion è '$app_version' ma il tag è '$GITHUB_REF_NAME': aggiorna appVersion, altrimenti il chart usa un'immagine diversa (o inesistente)."
+          fi
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
