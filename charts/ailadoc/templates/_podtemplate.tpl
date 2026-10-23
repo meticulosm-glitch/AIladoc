@@ -43,6 +43,11 @@ spec:
             name: {{ include "ailadoc.fullname" . }}
         - secretRef:
             name: {{ include "ailadoc.secretName" . }}
+        {{- if include "ailadoc.vaultEnabled" . }}
+        # credenziali da Vault (ExternalSecret): elencate per ultime, hanno la precedenza
+        - secretRef:
+            name: {{ include "ailadoc.vaultSecretName" . }}
+        {{- end }}
       env:
         - name: DATA_DIR
           value: /data
@@ -87,6 +92,11 @@ spec:
           mountPath: /etc/ailadoc/ca
           readOnly: true
         {{- end }}
+        {{- if include "ailadoc.localUsersJson" . }}
+        - name: local-users
+          mountPath: /etc/ailadoc/local-users
+          readOnly: true
+        {{- end }}
         {{- with .Values.extraVolumeMounts }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -114,6 +124,14 @@ spec:
     - name: keycloak-ca
       secret:
         secretName: {{ .Values.keycloak.caBundle.secretName }}
+    {{- end }}
+    {{- if include "ailadoc.localUsersJson" . }}
+    # password degli utenti locali, generate dal Job (un file per utente)
+    - name: local-users
+      secret:
+        secretName: {{ include "ailadoc.localUsersSecretName" . }}
+        optional: true
+        defaultMode: 0440
     {{- end }}
     {{- with .Values.extraVolumes }}
     {{- toYaml . | nindent 4 }}

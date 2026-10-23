@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import assistant, auth, creator, db as dbm, metrics, plugins, preview, secretscan, storage
+from . import assistant, auth, creator, db as dbm, localusers, metrics, plugins, preview, secretscan, storage
 from .config import settings
 from .db import (LEVEL_LABELS, LEVELS, PRINCIPAL_TYPES, AclEntry, AppRole, GroupMember, LocalGroup, Restriction,
                  SecretIgnore, get_db)
@@ -60,6 +60,11 @@ async def lifespan(_app):
         log.info("Assistente %s attivo (LLM: %s)", settings.assistant_name, assistant.llm_provider())
     if settings.dev_auth:
         log.warning("AUTH_DEV_MODE attivo: login senza Keycloak. NON usare in produzione!")
+    if settings.local_users:
+        log.info("Utenti locali: %s", ", ".join(settings.local_users))
+        for name in settings.local_users:
+            if not localusers.has_password(name):
+                log.warning("Utente locale %r senza password in %s: non può accedere", name, settings.local_users_dir)
     if not settings.oidc_client_secret and not settings.dev_auth:
         log.info("OIDC_CLIENT_SECRET vuoto: uso client pubblico con PKCE.")
     metrics.set_app_info(
@@ -329,7 +334,7 @@ def _login_failed(keys: list[tuple[str, int]]) -> None:
 def _start_session(request: Request, user: dict, id_token: str) -> None:
     request.session.clear()  # nuova sessione a ogni login (niente session fixation)
     request.session["user"] = user
-    if len(id_token) < 2500:  # resta nel cookie di sessione (limite ~4 KB)
+    if id_token and len(id_token) < 2500:  # resta nel cookie di sessione (limite ~4 KB)
         request.session["idt"] = id_token
 
 
@@ -338,6 +343,8 @@ def _login_page(request: Request, nxt: str, username: str = "", error: str = "",
     return render(request, "login.html", {
         "next": nxt, "username": username, "error": error, "error_kind": kind,
         "reset_url": settings.password_reset_link,
+        # LOGIN_MODE=redirect: la pagina dell'app serve solo agli utenti locali (/login/local)
+        "local_only": settings.login_mode != "form",
     }, status=status)
 
 
@@ -353,11 +360,38 @@ async def login(request: Request, next: str = "/"):
     return _login_page(request, next)
 
 
+@app.get("/login/local", response_class=HTMLResponse)
+async def login_local(request: Request, next: str = "/"):
+    """Pagina di login dell'app per gli utenti locali, anche con LOGIN_MODE=redirect."""
+    next = _safe_next(next)
+    if settings.dev_auth or not settings.local_users:
+        return RedirectResponse(f"/login?next={quote(next)}", status_code=303)
+    if request.session.get("user"):
+        return RedirectResponse(next, status_code=303)
+    return _login_page(request, next)
+
+
+def _local_login(request: Request, username: str, password: str, nxt: str, keys) -> Response:
+    try:
+        user = localusers.authenticate(username, password)
+    except auth.LoginError as e:
+        metrics.LOGINS.labels(method="local", result=e.kind).inc()
+        _login_failed(keys)
+        log.info("Accesso locale non riuscito per %r da %s", username, keys[1][0][3:])
+        return _login_page(request, nxt, username, str(e), e.kind, 401)
+    metrics.LOGINS.labels(method="local", result="success").inc()
+    _login_failures.pop(keys[0][0], None)
+    log.info("Accesso dell'utente locale %r da %s", user["username"], keys[1][0][3:])
+    _start_session(request, user, "")
+    return RedirectResponse(nxt, status_code=303)
+
+
 @app.post("/login", response_class=HTMLResponse)
 async def login_submit(request: Request, username: str = Form(""), password: str = Form(""), otp: str = Form(""),
                        next: str = Form("/"), csrf: str = Form("")):
     next = _safe_next(next)
-    if settings.dev_auth or settings.login_mode != "form":
+    local_only = settings.login_mode != "form"
+    if settings.dev_auth or (local_only and not settings.local_users):
         return Response(status_code=404)
     username = username.strip()[:255]
     expected = request.session.get("csrf")
@@ -373,6 +407,9 @@ async def login_submit(request: Request, username: str = Form(""), password: str
         metrics.LOGINS.labels(method="form", result="rate").inc()
         return _login_page(request, next, username, "Troppi tentativi in poco tempo. Attendi qualche minuto e riprova.",
                            "rate", 429)
+    # gli utenti locali non passano mai da Keycloak; con LOGIN_MODE=redirect questa pagina è solo per loro
+    if local_only or localusers.is_local(username):
+        return _local_login(request, username, password, next, keys)
     try:
         with metrics.timed(metrics.KEYCLOAK_DURATION, operation="password_login", outcome="ok") as t:
             try:
@@ -459,11 +496,14 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
 
 @app.get("/logout")
 async def logout(request: Request):
-    was_dev = (request.session.get("user") or {}).get("dev")
+    su = request.session.get("user") or {}
     id_token = request.session.get("idt")
     request.session.clear()
-    if settings.dev_auth or was_dev:
+    if settings.dev_auth or su.get("dev"):
         return RedirectResponse("/login", status_code=303)
+    if su.get("local"):  # nessuna sessione Keycloak da chiudere
+        flash(request, "Sei uscito. A presto!")
+        return RedirectResponse("/login/local" if settings.login_mode != "form" else "/login", status_code=303)
     if settings.login_mode == "form":
         flash(request, "Sei uscito. A presto!")
         if not id_token:  # senza id_token_hint Keycloak mostrerebbe la sua pagina di conferma

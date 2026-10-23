@@ -14,6 +14,28 @@ Chi non ha nessuno di questi ruoli vede la pagina di accesso negato.
 
 Documenti e loghi stanno nel volume montato su /data:
   kubectl -n {{ .Release.Namespace }} cp ./docs/. $(kubectl -n {{ .Release.Namespace }} get pod -l app.kubernetes.io/instance={{ .Release.Name }} -o jsonpath='{.items[0].metadata.name}'):/data/docs/
+{{- if include "ailadoc.localUsersJson" . }}
+
+Utenti locali (accesso senza Keycloak{{ if ne .Values.login.mode "form" }}, pagina /login/local{{ end }}): le password casuali
+sono nel Secret {{ include "ailadoc.localUsersSecretName" . }}, una chiave per utente:
+{{- range .Values.localUsers.users }}
+{{- $u := "" }}{{ if kindIs "string" . }}{{ $u = . }}{{ else }}{{ $u = .name }}{{ end }}
+  kubectl -n {{ $.Release.Namespace }} get secret {{ include "ailadoc.localUsersSecretName" $ }} -o jsonpath='{.data.{{ $u }}}' | base64 -d; echo
+{{- end }}
+Nuova password per un utente: togli la sua chiave dal Secret e rilancia helm upgrade / il sync di Argo CD.
+{{- end }}
+{{- if and (not .Values.secrets.existingSecret) (not (include "ailadoc.vaultEnabled" .)) }}
+{{- $creds := dict "OIDC_CLIENT_SECRET" .Values.keycloak.clientSecret "ASSISTANT_BASE_URL" .Values.assistant.baseUrl "ASSISTANT_API_KEY" .Values.assistant.apiKey "METRICS_TOKEN" .Values.metrics.token }}
+{{- $placeholders := list }}
+{{- range $k := keys (.Values.vault.keys | default dict) | sortAlpha }}
+{{- if and (hasKey $creds $k) (not (get $creds $k)) }}{{ $placeholders = append $placeholders $k }}{{ end }}
+{{- end }}
+{{- if $placeholders }}
+
+ATTENZIONE: {{ join ", " $placeholders }} {{ if gt (len $placeholders) 1 }}hanno{{ else }}ha{{ end }} il valore segnaposto "Changeme".
+Configura vault.address (External Secrets Operator) oppure imposta il valore nei values.
+{{- end }}
+{{- end }}
 {{- if .Values.rollout.enabled }}
 
 Deploy gestito da Argo Rollouts (strategia {{ .Values.rollout.strategy }}), richiede il plugin kubectl argo rollouts:

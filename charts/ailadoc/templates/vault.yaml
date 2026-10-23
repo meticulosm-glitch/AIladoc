@@ -1,0 +1,85 @@
+{{- if include "ailadoc.vaultEnabled" . }}
+{{- $v := .Values.vault -}}
+{{- $fullname := include "ailadoc.fullname" . -}}
+{{- if not $v.keys }}
+{{- fail "vault.keys è vuoto: indica quali chiavi del Secret leggere da Vault" }}
+{{- end }}
+{{- if not $v.secretPath }}
+{{- fail "vault.secretPath è obbligatorio (percorso del segreto nel motore KV, es. ailadoc/prod)" }}
+{{- end }}
+{{- if not $v.existingStore.name }}
+{{- $m := $v.auth.method -}}
+{{- if not (has $m (list "kubernetes" "token" "appRole")) }}
+{{- fail "vault.auth.method deve essere kubernetes, token oppure appRole" }}
+{{- end }}
+# Connessione a Vault per External Secrets Operator
+apiVersion: {{ $v.apiVersion }}
+kind: SecretStore
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "ailadoc.labels" . | nindent 4 }}
+spec:
+  provider:
+    vault:
+      server: {{ $v.address | trimSuffix "/" | quote }}
+      path: {{ $v.mountPath | quote }}
+      version: {{ $v.kvVersion | quote }}
+      {{- with $v.namespace }}
+      namespace: {{ . | quote }}
+      {{- end }}
+      {{- if $v.caProvider.name }}
+      caProvider:
+        type: {{ required "vault.caProvider.type (ConfigMap o Secret) è obbligatorio" $v.caProvider.type }}
+        name: {{ $v.caProvider.name }}
+        key: {{ $v.caProvider.key }}
+      {{- end }}
+      auth:
+        {{- if eq $m "kubernetes" }}
+        kubernetes:
+          mountPath: {{ $v.auth.kubernetes.mountPath | quote }}
+          role: {{ required "vault.auth.kubernetes.role è obbligatorio" $v.auth.kubernetes.role | quote }}
+          serviceAccountRef:
+            name: {{ $v.auth.kubernetes.serviceAccount | default (include "ailadoc.serviceAccountName" .) }}
+        {{- else if eq $m "token" }}
+        tokenSecretRef:
+          name: {{ required "vault.auth.token.secretName è obbligatorio" $v.auth.token.secretName }}
+          key: {{ $v.auth.token.key }}
+        {{- else }}
+        appRole:
+          path: {{ $v.auth.appRole.path | quote }}
+          roleId: {{ required "vault.auth.appRole.roleId è obbligatorio" $v.auth.appRole.roleId | quote }}
+          secretRef:
+            name: {{ required "vault.auth.appRole.secretName è obbligatorio" $v.auth.appRole.secretName }}
+            key: {{ $v.auth.appRole.key }}
+        {{- end }}
+---
+{{- end }}
+# Credenziali lette da Vault: ESO crea e aggiorna il Secret {{ include "ailadoc.vaultSecretName" . }}
+apiVersion: {{ $v.apiVersion }}
+kind: ExternalSecret
+metadata:
+  name: {{ include "ailadoc.vaultSecretName" . }}
+  labels:
+    {{- include "ailadoc.labels" . | nindent 4 }}
+spec:
+  refreshInterval: {{ $v.refreshInterval | quote }}
+  secretStoreRef:
+    {{- if $v.existingStore.name }}
+    name: {{ $v.existingStore.name }}
+    kind: {{ $v.existingStore.kind }}
+    {{- else }}
+    name: {{ $fullname }}
+    kind: SecretStore
+    {{- end }}
+  target:
+    name: {{ include "ailadoc.vaultSecretName" . }}
+    creationPolicy: Owner
+  data:
+    {{- range $key := keys $v.keys | sortAlpha }}
+    - secretKey: {{ $key }}
+      remoteRef:
+        key: {{ $v.secretPath | quote }}
+        property: {{ index $v.keys $key | quote }}
+    {{- end }}
+{{- end }}

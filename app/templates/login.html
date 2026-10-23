@@ -14,7 +14,7 @@
     <header class="login-head">
       <img src="{{ app_logo }}" alt="" class="login-logo" width="72" height="72">
       <h1 id="login-title">{{ settings.app_name }}</h1>
-      <p>Accedi con il tuo account {{ settings.company_name or 'aziendale' }}</p>
+      <p>{% if local_only %}Accesso con credenziali locali{% else %}Accedi con il tuo account {{ settings.company_name or 'aziendale' }}{% endif %}</p>
     </header>
 
     {% for kind, msg in flashes %}<div class="login-note {{ kind }}" role="status">{{ msg }}</div>{% endfor %}
@@ -34,7 +34,7 @@
     <form method="post" action="/login" class="login-form" data-login-form>
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="next" value="{{ next }}">
-      <label class="field">Nome utente o email
+      <label class="field">{% if local_only %}Nome utente{% else %}Nome utente o email{% endif %}
         <input name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" autocorrect="off"
                spellcheck="false" required maxlength="255" {% if not username %}autofocus{% endif %}
                {% if error and error_kind == 'credentials' %}aria-invalid="true" aria-describedby="login-error"{% endif %}>
@@ -42,7 +42,7 @@
       <div class="field">
         <span class="field-row">
           <label for="login-password">Password</label>
-          {% if reset_url %}<a href="{{ reset_url }}" class="field-link">Password dimenticata?</a>{% endif %}
+          {% if reset_url and not local_only %}<a href="{{ reset_url }}" class="field-link">Password dimenticata?</a>{% endif %}
         </span>
         <span class="password-wrap">
           <input id="login-password" type="password" name="password" autocomplete="current-password" required
@@ -53,7 +53,7 @@
           </button>
         </span>
       </div>
-      {% if settings.login_otp %}
+      {% if settings.login_otp and not local_only %}
       <label class="field">
         <span>Codice di verifica <small class="muted">· solo se attivo sul tuo account</small></span>
         <input name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="123456">
@@ -64,7 +64,7 @@
       </button>
     </form>
 
-    {% if settings.login_sso_button %}
+    {% if settings.login_sso_button or local_only %}
     <div class="login-divider"><span>oppure</span></div>
     <a class="btn login-sso" href="{{ sso_href }}">{{ icon('key', size=16) }} Accedi con Single Sign-On</a>
     {% endif %}

@@ -93,8 +93,8 @@ app:
 # Keycloak esterno. url/internalUrl/realm/clientId/clientSecret finiscono nel
 # Secret dell'app (sono le stringhe di connessione), il resto nella ConfigMap.
 keycloak:
-  # URL raggiunto dal browser, senza /realms/... (es. https://sso.example.com)
-  url: ""
+  # URL raggiunto dal browser, senza /realms/... DA CAMBIARE con il vostro Keycloak.
+  url: https://sso.example.com
   # URL raggiunto dal pod, se diverso (es. http://keycloak.keycloak.svc:8080).
   # Keycloak deve allora avere KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true.
   internalUrl: ""
@@ -127,6 +127,37 @@ login:
   passwordResetUrl: ""
   # Tentativi falliti in 10 minuti per utente e IP
   maxAttempts: 10
+
+# ---------------------------------------------------------------------------
+# Utenti locali: accedono con nome utente e password senza passare da Keycloak
+# (es. amministratore d'emergenza se Keycloak non risponde). Le password le genera
+# casualmente un Job (hook pre-install/pre-upgrade, PreSync con Argo CD) nel Secret
+# <nome>-local-users, una chiave per utente; i nuovi utenti ricevono una password,
+# quelli esistenti la mantengono, quelli tolti da qui vengono rimossi. Per leggerla:
+#   kubectl -n <ns> get secret <nome>-local-users -o jsonpath='{.data.admin}' | base64 -d
+localUsers:
+  enabled: true
+  # Nome (minuscole, cifre, . _ -) e ruoli, come se arrivassero da Keycloak.
+  # Si può scrivere anche solo il nome: riceve defaultRoles.
+  users:
+    - name: admin
+      roles: [ailadoc-admin]
+  #  - mario
+  defaultRoles: [ailadoc-viewer]
+  passwordLength: 24
+  job:
+    # vuoto = immagine dell'app (il Job usa solo Python)
+    image:
+      repository: ""
+      tag: ""
+    backoffLimit: 3
+    activeDeadlineSeconds: 300
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
 
 # ---------------------------------------------------------------------------
 # Controllo password e credenziali scritte nei documenti
@@ -191,7 +222,7 @@ secrets:
   # Secret gestito da voi (Sealed Secrets, External Secrets, Vault...). Se impostato,
   # il chart NON crea il suo Secret e ignora keycloak.url/internalUrl/realm/clientId/
   # clientSecret, assistant.baseUrl/apiKey e i valori qui sotto. Chiavi lette:
-  #   SECRET_KEY            (obbligatoria) firma dei cookie di sessione
+  #   SECRET_KEY            (facoltativa) firma dei cookie; se manca la genera l'app nel volume
   #   KEYCLOAK_PUBLIC_URL   (obbligatoria) es. https://sso.example.com
   #   KEYCLOAK_REALM        (obbligatoria)
   #   OIDC_CLIENT_ID        (obbligatoria)
@@ -202,10 +233,67 @@ secrets:
   #   ASSISTANT_API_KEY     (facoltativa)
   #   METRICS_TOKEN         (facoltativa, vedi metrics.existingSecretHasToken)
   existingSecret: ""
-  # Firma dei cookie di sessione. Vuota = generata al primo install e mantenuta negli upgrade.
+  # Firma dei cookie di sessione. Vuota = l'app la genera al primo avvio e la salva nel volume
+  # dati (/data/.secret_key): resta la stessa tra riavvii e sync di Argo CD.
   secretKey: ""
   # Facoltativo, es. postgresql+psycopg://user:pass@host/db (richiede psycopg nell'immagine)
   databaseUrl: ""
+
+# ---------------------------------------------------------------------------
+# Vault tramite External Secrets Operator (servono il controller e le sue CRD).
+# Con vault.address (oppure existingStore.name) il chart crea un SecretStore e un
+# ExternalSecret che scrive le chiavi di vault.keys nel Secret <nome>-vault, letto dal pod
+# dopo quello del chart (ha la precedenza). Senza Vault quelle chiavi finiscono nel Secret
+# del chart con il valore dei values (keycloak.clientSecret, assistant.apiKey, metrics.token...)
+# oppure, se vuoto, con il segnaposto "Changeme". Eccezioni: SECRET_KEY (la genera l'app)
+# e DATABASE_URL (senza valore si usa SQLite) non ricevono mai il segnaposto.
+# Le modifiche in Vault aggiornano il Secret ma non riavviano il pod (usate ad es. Reloader).
+vault:
+  # es. https://vault.example.com:8200 (vuoto = Vault non configurato)
+  address: ""
+  # Namespace di Vault Enterprise
+  namespace: ""
+  # Motore KV: mount e versione (v1 | v2)
+  mountPath: secret
+  kvVersion: v2
+  # Percorso del segreto nel mount (es. ailadoc/prod)
+  secretPath: ailadoc
+  # Chiave del Secret dell'app -> proprietà del segreto in Vault
+  keys:
+    OIDC_CLIENT_SECRET: oidc-client-secret
+    # SECRET_KEY: secret-key
+    # DATABASE_URL: database-url
+    # ASSISTANT_API_KEY: assistant-api-key
+    # ASSISTANT_BASE_URL: assistant-base-url
+    # METRICS_TOKEN: metrics-token
+  refreshInterval: 1h
+  auth:
+    # kubernetes | token | appRole
+    method: kubernetes
+    kubernetes:
+      mountPath: kubernetes
+      # ruolo Vault legato al service account del chart e al namespace
+      role: ailadoc
+      # vuoto = service account del chart
+      serviceAccount: ""
+    token:
+      secretName: ""
+      key: token
+    appRole:
+      path: approle
+      roleId: ""
+      secretName: ""
+      key: secret-id
+  # CA del certificato di Vault: ConfigMap o Secret esistente
+  caProvider:
+    type: ""   # ConfigMap | Secret
+    name: ""
+    key: ca.crt
+  # SecretStore o ClusterSecretStore già esistente: il chart non crea il proprio
+  existingStore:
+    name: ""
+    kind: ClusterSecretStore
+  apiVersion: external-secrets.io/v1
 
 persistence:
   enabled: true

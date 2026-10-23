@@ -65,8 +65,8 @@ Le stringhe di connessione e le credenziali **non** finiscono nella ConfigMap ma
 
 | Chiave | Da quale valore | |
 |--------|-----------------|---|
-| `SECRET_KEY` | `secrets.secretKey` | generata al primo install se vuota, poi **mantenuta** negli upgrade |
-| `KEYCLOAK_PUBLIC_URL` | `keycloak.url` | obbligatoria |
+| `SECRET_KEY` | `secrets.secretKey` | facoltativa: se vuota l'app la genera al primo avvio e la salva nel volume (`/data/.secret_key`) |
+| `KEYCLOAK_PUBLIC_URL` | `keycloak.url` | default `https://sso.example.com`: **da cambiare** |
 | `KEYCLOAK_INTERNAL_URL` | `keycloak.internalUrl` | facoltativa |
 | `KEYCLOAK_REALM` | `keycloak.realm` | obbligatoria |
 | `OIDC_CLIENT_ID` | `keycloak.clientId` | obbligatoria |
@@ -76,7 +76,24 @@ Le stringhe di connessione e le credenziali **non** finiscono nella ConfigMap ma
 | `ASSISTANT_API_KEY` | `assistant.apiKey` | facoltativa |
 | `METRICS_TOKEN` | `metrics.token` | facoltativa: token Bearer per `/metrics` |
 
-Il Secret creato dal chart ha `helm.sh/resource-policy: keep`, così `helm uninstall` non perde la chiave di sessione.
+Il Secret viene sempre creato dai template del chart (salvo `secrets.existingSecret`) e ha `helm.sh/resource-policy: keep`. Il suo contenuto dipende solo dai values: con Argo CD (che usa `helm template`) non cambia a ogni sync. Per questo la `SECRET_KEY` non viene generata dal chart: se `secrets.secretKey` è vuota la crea l'app al primo avvio e la salva nel volume dati, così resta valida tra riavvii, repliche e sync. Le installazioni Helm precedenti mantengono la chiave già presente nel Secret.
+
+Con Argo CD basta passare i values nell'Application, per esempio:
+
+```yaml
+spec:
+  source:
+    path: charts/ailadoc
+    helm:
+      valuesObject:
+        keycloak:
+          url: https://sso.tuodominio.it
+          clientSecret: "..."        # meglio secrets.existingSecret, per non tenerlo in git
+        ingress:
+          hosts:
+            - host: docs.tuodominio.it
+              paths: [{ path: /, pathType: Prefix }]
+```
 
 Per non mettere credenziali nei values, crea tu il Secret (a mano, Sealed Secrets, External Secrets, Vault…) con le stesse chiavi e indicalo al chart:
 
@@ -152,6 +169,66 @@ kubectl -n docs cp ./mia-documentazione/. $POD:/data/docs/
 - La PVC ha `helm.sh/resource-policy: keep`: `helm uninstall` **non** cancella i documenti.
 - Con `ReadWriteOnce` il chart forza **1 replica** e la strategia `Recreate` (con Argo Rollouts: canary con `maxSurge: 0` / `maxUnavailable: 1`, vedi sotto). Per più repliche servono un volume `ReadWriteMany` e `databaseUrl` verso Postgres (con `psycopg[binary]` aggiunto a `requirements.txt`); le sessioni sono cookie firmati, quindi non serve la sticky session.
 - Backup: snapshot della PVC, oppure `kubectl cp $POD:/data ./backup`.
+
+## Utenti locali
+
+Accesso con nome utente e password **senza Keycloak**, per esempio un amministratore d'emergenza. Di default c'è solo `admin`:
+
+```yaml
+localUsers:
+  enabled: true
+  users:
+    - name: admin
+      roles: [ailadoc-admin]          # ruoli trattati come ruoli Keycloak
+    - name: redazione
+      roles: [ailadoc-editor]
+    - ospite                          # solo il nome: riceve localUsers.defaultRoles
+  defaultRoles: [ailadoc-viewer]
+```
+
+Le password le genera **casualmente un Job** (24 caratteri, `localUsers.passwordLength`) nel Secret `<release>-ailadoc-local-users`, una chiave per utente. Il Job è un hook `pre-install,pre-upgrade` (con Argo CD diventa `PreSync`), usa l'immagine dell'app e un service account che può leggere e scrivere solo quel Secret.
+
+- utente nuovo → password nuova; utente già presente → password invariata; utente tolto dai values → rimosso dal Secret;
+- il Secret lo crea il Job, non Helm o Argo CD: un sync non lo sovrascrive né lo cancella;
+- il pod lo monta come volume: una password cambiata vale al login successivo, senza riavvii.
+
+```bash
+kubectl -n docs get secret docs-ailadoc-local-users -o jsonpath='{.data.admin}' | base64 -d; echo
+# nuova password per admin: togli la chiave e rilancia helm upgrade (o il sync di Argo CD)
+kubectl -n docs patch secret docs-ailadoc-local-users --type json -p '[{"op":"remove","path":"/data/admin"}]'
+```
+
+Gli utenti locali usano la pagina di login dell'app (con `login.mode: redirect` è `/login/local`) e non passano mai da Keycloak, quindi funzionano anche se Keycloak non risponde. Hanno lo stesso limite di tentativi (`login.maxAttempts`). Un nome locale ha la precedenza su un utente Keycloak con lo stesso nome. Per disattivarli: `localUsers.enabled: false`.
+
+## Vault (External Secrets Operator)
+
+Con `vault.address` il chart crea un `SecretStore` e un `ExternalSecret` di [External Secrets Operator](https://external-secrets.io/) (servono il controller e le CRD). ESO legge da Vault le chiavi in `vault.keys` e le scrive nel Secret `<release>-ailadoc-vault`, che il pod legge dopo quello del chart, quindi ha la precedenza.
+
+```yaml
+vault:
+  address: https://vault.example.com:8200
+  mountPath: secret            # motore KV
+  kvVersion: v2
+  secretPath: ailadoc/prod     # vault kv put secret/ailadoc/prod oidc-client-secret=...
+  keys:                        # chiave del Secret dell'app -> proprietà in Vault
+    OIDC_CLIENT_SECRET: oidc-client-secret
+    ASSISTANT_API_KEY: assistant-api-key
+    METRICS_TOKEN: metrics-token
+  auth:
+    method: kubernetes         # kubernetes | token | appRole
+    kubernetes:
+      mountPath: kubernetes
+      role: ailadoc            # ruolo Vault legato al service account del chart e al namespace
+```
+
+- `auth.method: token` usa `auth.token.secretName/key`; `appRole` usa `auth.appRole.roleId` e `secretName/key` (il secret-id).
+- `vault.caProvider` (ConfigMap o Secret) per un Vault con CA interna; `vault.namespace` per Vault Enterprise.
+- `vault.existingStore.name` usa un `SecretStore`/`ClusterSecretStore` già esistente: il chart crea solo l'`ExternalSecret`.
+- `vault.apiVersion` (default `external-secrets.io/v1`): con versioni di ESO che servono solo l'API precedente usa `external-secrets.io/v1beta1`.
+
+**Senza Vault** (`vault.address` vuoto) le stesse chiavi finiscono nel Secret del chart con il valore dei values (`keycloak.clientSecret`, `assistant.apiKey`, `assistant.baseUrl`, `metrics.token`) oppure, se vuoto, con il segnaposto **`Changeme`**: il deploy funziona subito e le note di installazione segnalano i segnaposto. Fanno eccezione `SECRET_KEY` (la genera l'app nel volume) e `DATABASE_URL` (senza valore si usa SQLite), che non ricevono mai il segnaposto. Per non avere segnaposto con un client Keycloak pubblico, togli la chiave: `vault.keys.OIDC_CLIENT_SECRET: null`.
+
+Un valore cambiato in Vault aggiorna il Secret entro `vault.refreshInterval`, ma il pod lo legge all'avvio: per applicarlo riavvia il rollout (o usa un controller come Reloader). Con `metrics.serviceMonitor` e `METRICS_TOKEN` in Vault il ServiceMonitor legge il token dal Secret di Vault.
 
 ## Argo Rollouts
 
@@ -245,13 +322,17 @@ Senza Prometheus Operator: `metrics.scrapeAnnotations: true` aggiunge al pod le 
 | Valore | Default | Descrizione |
 |--------|---------|-------------|
 | `image.repository` / `image.tag` | `meticulo/ailadoc` / appVersion | immagine (il tag deve esistere: è il tag git pubblicato dal workflow) |
-| `keycloak.url` | **obbligatorio** (o `secrets.existingSecret`) | URL pubblico di Keycloak → Secret |
+| `keycloak.url` | `https://sso.example.com` (**da cambiare**) | URL pubblico di Keycloak → Secret |
 | `keycloak.internalUrl` | `""` | URL usato dal pod, se diverso → Secret |
 | `keycloak.realm` / `clientId` / `clientSecret` | `ailadoc` / `ailadoc` / `""` | client OIDC → Secret |
 | `keycloak.scopes` / `rolesExtraClaims` / `verifyTls` | | ConfigMap |
 | `keycloak.caBundle.*` | vuoto | CA interna per Keycloak |
 | `secrets.existingSecret` | `""` | Secret esistente con tutte le chiavi di connessione |
-| `secrets.secretKey` / `secrets.databaseUrl` | generata / `""` | → Secret |
+| `localUsers.enabled` / `users` / `defaultRoles` | `true` / `admin` (amministratore) / `[ailadoc-viewer]` | utenti locali senza Keycloak, password generate dal Job |
+| `localUsers.passwordLength` / `job.*` | `24` / immagine dell'app | lunghezza delle password, immagine e risorse del Job |
+| `vault.address` / `secretPath` / `keys` | `""` / `ailadoc` / `OIDC_CLIENT_SECRET` | Vault con External Secrets Operator; senza, segnaposto `Changeme` |
+| `vault.auth.*` / `caProvider` / `existingStore` | `kubernetes`, ruolo `ailadoc` | autenticazione verso Vault, CA, store esistente |
+| `secrets.secretKey` / `secrets.databaseUrl` | generata dall'app nel volume / `""` | → Secret |
 | `login.mode` / `ssoButton` / `otp` | `form` / `false` / `false` | pagina di login dell'app o di Keycloak (ConfigMap) |
 | `login.passwordResetUrl` / `maxAttempts` | `""` / `10` | link «Password dimenticata?» e limite tentativi (ConfigMap) |
 | `secretsScan.enabled` / `policy` / `rescanSeconds` | `true` / `warn` / `30` | controllo password nei documenti (ConfigMap) |

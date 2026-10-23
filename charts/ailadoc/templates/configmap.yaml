@@ -47,4 +47,8 @@ data:
   EMBED_ALLOWED_HOSTS: {{ join "," . | quote }}
   {{- end }}
   METRICS_ENABLED: {{ .Values.metrics.enabled | toString | quote }}
+  {{- with include "ailadoc.localUsersJson" . }}
+  LOCAL_USERS: {{ . | quote }}
+  LOCAL_USERS_DIR: /etc/ailadoc/local-users
+  {{- end }}
   AUTH_DEV_MODE: "false"

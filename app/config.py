@@ -1,8 +1,12 @@
 """Configurazione da variabili d'ambiente."""
 from __future__ import annotations
 
+import json
+import logging
 import os
+import re
 import secrets
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote
@@ -15,6 +19,63 @@ def _list(name: str, default: str = "") -> list[str]:
 
 def _bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+LOCAL_USER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+
+
+def _local_users(raw: str) -> dict[str, list[str]]:
+    """LOCAL_USERS: JSON {"admin": ["ailadoc-admin"], "mario": ["ailadoc-editor"]}
+    oppure nomi separati da virgola (utenti senza ruoli Keycloak)."""
+    raw = raw.strip()
+    if not raw:
+        return {}
+    try:
+        items = json.loads(raw) if raw.startswith("{") else {x: [] for x in raw.split(",")}
+    except ValueError:
+        logging.getLogger("ailadoc.config").error("LOCAL_USERS non è un JSON valido: utenti locali disattivati")
+        return {}
+    out: dict[str, list[str]] = {}
+    for name, roles in items.items():
+        name = str(name).strip().lower()
+        if not name:
+            continue
+        if not LOCAL_USER_RE.match(name):
+            logging.getLogger("ailadoc.config").error(
+                "Utente locale %r ignorato: usa lettere minuscole, cifre, '.', '_' o '-' (max 64)", name)
+            continue
+        if isinstance(roles, str):
+            roles = [roles]
+        out[name] = sorted({str(r).strip() for r in roles or [] if str(r).strip()})
+    return out
+
+
+def _secret_key() -> str:
+    """SECRET_KEY dall'ambiente; se manca viene generata una sola volta e salvata in
+    DATA_DIR/.secret_key, così resta la stessa tra riavvii e repliche che condividono il volume."""
+    key = os.getenv("SECRET_KEY", "").strip()
+    if key:
+        return key
+    data_dir = Path(os.getenv("DATA_DIR", "/data"))
+    path = data_dir / ".secret_key"
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        # creata da un avvio precedente o da un'altra replica: attende che sia scritta
+        for _ in range(50):
+            key = path.read_text().strip()
+            if key:
+                return key
+            time.sleep(0.1)
+        raise RuntimeError(f"{path} è vuoto: cancellalo oppure imposta SECRET_KEY")
+    except OSError:
+        # volume non scrivibile: chiave valida solo per questo processo
+        return secrets.token_urlsafe(48)
+    key = secrets.token_urlsafe(48)
+    with os.fdopen(fd, "w") as f:
+        f.write(key)
+    return key
 
 
 DEFAULT_EMBED_HOSTS = (
@@ -70,9 +131,15 @@ class Settings:
     viewer_roles: list[str] = field(default_factory=lambda: _list("VIEWER_ROLES", "ailadoc-viewer"))
 
     # --- Sessione ---------------------------------------------------------
-    secret_key: str = os.getenv("SECRET_KEY", "") or secrets.token_urlsafe(48)
+    # vuota = generata al primo avvio e salvata in DATA_DIR/.secret_key
+    secret_key: str = field(default_factory=_secret_key)
     session_max_age: int = int(os.getenv("SESSION_MAX_AGE", str(8 * 3600)))
     cookie_secure: bool = _bool("COOKIE_SECURE", False)
+
+    # --- Utenti locali (accesso senza Keycloak, es. amministratore d'emergenza) ---
+    # nome -> ruoli; le password stanno in LOCAL_USERS_DIR, un file per utente
+    local_users: dict[str, list[str]] = field(default_factory=lambda: _local_users(os.getenv("LOCAL_USERS", "")))
+    local_users_dir: Path = Path(os.getenv("LOCAL_USERS_DIR", "/etc/ailadoc/local-users"))
 
     # Login di sviluppo senza Keycloak (MAI in produzione)
     dev_auth: bool = _bool("AUTH_DEV_MODE", False)

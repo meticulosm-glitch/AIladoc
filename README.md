@@ -33,6 +33,8 @@ Portale di documentazione aziendale, containerizzato. Si accede con l'account **
 3. I ruoli Keycloak vengono tradotti in **ruoli app** (vedi sotto). Il ruolo app con il livello più alto decide l'accesso: *nessuno* → pagina di accesso negato, *lettura*, *modifica*, *amministratore*.
 4. La sessione è un cookie firmato con `SECRET_KEY`. I ruoli si aggiornano a ogni login. «Esci» chiude anche la sessione su Keycloak.
 
+**Utenti locali.** Oltre a Keycloak si può accedere con utenti definiti nell'app (`LOCAL_USERS`), per esempio un amministratore d'emergenza quando Keycloak non risponde. Usano la stessa pagina di login (con `LOGIN_MODE=redirect` la pagina è `/login/local`), non passano mai da Keycloak e hanno i ruoli indicati in `LOCAL_USERS`, trattati come ruoli Keycloak. La password di ciascuno è il contenuto del file `LOCAL_USERS_DIR/<nome>`: con Helm la genera casualmente un Job (vedi il [README del chart](charts/ailadoc/README.md#utenti-locali)). Un nome locale ha la precedenza su un utente Keycloak con lo stesso nome.
+
 ### Contenuti
 
 Tutto quello che c'è in `data/docs/` è la documentazione: ogni cartella è una sezione del menu, un `index.md` dentro una cartella è la sua pagina, un prefisso numerico (`01-`, `02-`) decide l'ordine e non viene mostrato. I file si gestiscono dall'app oppure copiandoli direttamente nel volume (rsync, git, `kubectl cp`): l'app li legge dal disco a ogni richiesta.
@@ -145,7 +147,7 @@ Il file `.env.example` le contiene tutte, con commenti. Con Helm non si scrivono
 | Variabile | Esempio | Descrizione |
 |-----------|---------|-------------|
 | `BASE_URL` | `https://docs.azienda.it` | URL pubblico dell'app, usato per i redirect di login e logout |
-| `SECRET_KEY` | 48+ caratteri casuali | Firma dei cookie di sessione. Se manca ne viene generata una a ogni avvio e tutti vengono disconnessi. Genera con `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SECRET_KEY` | 48+ caratteri casuali | Firma dei cookie di sessione. Se manca viene generata al primo avvio e salvata in `DATA_DIR/.secret_key` (resta valida tra i riavvii; senza volume scrivibile cambia a ogni avvio e tutti vengono disconnessi). Genera con `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `KEYCLOAK_PUBLIC_URL` | `https://sso.azienda.it` | Keycloak come lo raggiunge il browser, senza `/realms/...` |
 | `KEYCLOAK_REALM` | `ailadoc` | Realm |
 | `OIDC_CLIENT_ID` | `ailadoc` | Client OIDC |
@@ -175,6 +177,8 @@ Il file `.env.example` le contiene tutte, con commenti. Con Helm non si scrivono
 | `LOGIN_OTP` | `false` | Campo «Codice di verifica» per chi ha l'OTP attivo in Keycloak |
 | `PASSWORD_RESET_URL` | vuoto | Link «Password dimenticata?»: `keycloak` = reset del realm (serve *Forgot password* attivo nel realm), oppure un URL. Vuoto = nascosto |
 | `LOGIN_MAX_ATTEMPTS` | `10` | Tentativi falliti in 10 minuti per utente e IP prima di una pausa (per IP: 5 volte tanto). La difesa principale resta la *Brute force detection* di Keycloak |
+| `LOCAL_USERS` | vuoto | Utenti locali senza Keycloak: JSON nome → ruoli, es. `{"admin": ["ailadoc-admin"]}`, oppure nomi separati da virgola (senza ruoli). Nomi: minuscole, cifre, `.` `_` `-` |
+| `LOCAL_USERS_DIR` | `/etc/ailadoc/local-users` | Cartella con un file per utente locale, che contiene la sua password. Senza file l'utente non può accedere |
 
 ### Applicazione e contenuti
 
@@ -374,6 +378,8 @@ Sono accettati anche `.webp` e `.jpg`; se ci sono più formati vince l'SVG. Usa 
 Basta salvare `data/` (o fare uno snapshot del volume): documenti, loghi e database dei permessi. La cache si ricostruisce da sola.
 
 ## Sviluppo
+
+Le modifiche, release per release, sono nel [CHANGELOG](CHANGELOG.md): aggiornalo insieme a ogni modifica e spostale sotto il nuovo tag quando rilasci.
 
 ```bash
 pip install -r requirements.txt pytest

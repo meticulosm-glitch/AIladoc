@@ -74,3 +74,50 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- fail "replicaCount > 1 richiede un volume ReadWriteMany (persistence.accessModes) e databaseUrl verso Postgres: con SQLite su ReadWriteOnce usa 1 replica." }}
 {{- end }}
 {{- end }}
+
+{{/* "true" se le credenziali arrivano da Vault (External Secrets Operator) */}}
+{{- define "ailadoc.vaultEnabled" -}}
+{{- if or .Values.vault.address .Values.vault.existingStore.name }}true{{ end }}
+{{- end }}
+
+{{- define "ailadoc.vaultSecretName" -}}
+{{- printf "%s-vault" (include "ailadoc.fullname" .) }}
+{{- end }}
+
+{{/* Secret con METRICS_TOKEN (per il ServiceMonitor), vuoto se non c'è un token */}}
+{{- define "ailadoc.metricsTokenSecret" -}}
+{{- $inVault := hasKey .Values.vault.keys "METRICS_TOKEN" -}}
+{{- if and (include "ailadoc.vaultEnabled" .) $inVault }}
+{{- include "ailadoc.vaultSecretName" . }}
+{{- else if .Values.secrets.existingSecret }}
+{{- if .Values.metrics.existingSecretHasToken }}{{ .Values.secrets.existingSecret }}{{ end }}
+{{- else if or .Values.metrics.token $inVault }}
+{{- include "ailadoc.fullname" . }}
+{{- end }}
+{{- end }}
+
+{{/* Utenti locali come JSON nome -> ruoli; vuoto se disattivati */}}
+{{- define "ailadoc.localUsersJson" -}}
+{{- if .Values.localUsers.enabled }}
+{{- $out := dict -}}
+{{- range .Values.localUsers.users }}
+{{- $name := "" -}}
+{{- $roles := $.Values.localUsers.defaultRoles -}}
+{{- if kindIs "string" . }}
+{{- $name = . -}}
+{{- else }}
+{{- $name = required "localUsers.users[].name è obbligatorio" .name -}}
+{{- if hasKey . "roles" }}{{ $roles = .roles }}{{ end -}}
+{{- end }}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9._-]{0,63}$" (toString $name)) }}
+{{- fail (printf "localUsers: nome utente %q non valido (lettere minuscole, cifre, '.', '_' o '-', max 64)" $name) }}
+{{- end }}
+{{- $_ := set $out (toString $name) $roles -}}
+{{- end }}
+{{- if $out }}{{ toJson $out }}{{ end }}
+{{- end }}
+{{- end }}
+
+{{- define "ailadoc.localUsersSecretName" -}}
+{{- printf "%s-local-users" (include "ailadoc.fullname" .) }}
+{{- end }}
