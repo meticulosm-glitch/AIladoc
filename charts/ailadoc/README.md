@@ -150,8 +150,48 @@ kubectl -n docs cp ./mia-documentazione/. $POD:/data/docs/
 
 - Un solo PVC (`10Gi`, `ReadWriteOnce`) contiene documenti, loghi, cache delle anteprime e il database SQLite di ruoli, gruppi e permessi.
 - La PVC ha `helm.sh/resource-policy: keep`: `helm uninstall` **non** cancella i documenti.
-- Con `ReadWriteOnce` il chart forza **1 replica** e la strategia `Recreate`. Per più repliche servono un volume `ReadWriteMany` e `databaseUrl` verso Postgres (con `psycopg[binary]` aggiunto a `requirements.txt`); le sessioni sono cookie firmati, quindi non serve la sticky session.
+- Con `ReadWriteOnce` il chart forza **1 replica** e la strategia `Recreate` (con Argo Rollouts: canary con `maxSurge: 0` / `maxUnavailable: 1`, vedi sotto). Per più repliche servono un volume `ReadWriteMany` e `databaseUrl` verso Postgres (con `psycopg[binary]` aggiunto a `requirements.txt`); le sessioni sono cookie firmati, quindi non serve la sticky session.
 - Backup: snapshot della PVC, oppure `kubectl cp $POD:/data ./backup`.
+
+## Argo Rollouts
+
+Di default il chart crea un `Rollout` di [Argo Rollouts](https://argoproj.github.io/rollouts/) al posto del `Deployment` (stesso pod, stessi Service). Nel cluster servono il controller e le CRD:
+
+```bash
+kubectl create namespace argo-rollouts
+kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+```
+
+Senza Argo Rollouts, o per tornare al `Deployment`:
+
+```yaml
+rollout:
+  enabled: false
+```
+
+**Canary** (default). Con il volume `ReadWriteOnce` e una replica il nuovo pod sostituisce il vecchio (`maxSurge: 0`, `maxUnavailable: 1`), poi il rollout resta in pausa 2 minuti: è la finestra per controllare la nuova versione e annullarla.
+
+```bash
+kubectl argo rollouts -n docs get rollout docs-ailadoc --watch
+kubectl argo rollouts -n docs promote docs-ailadoc    # salta la pausa / passo successivo
+kubectl argo rollouts -n docs abort docs-ailadoc      # torna alla versione stabile
+```
+
+```yaml
+rollout:
+  canary:
+    steps:
+      - setWeight: 100
+      - pause: {}               # attende la promozione manuale
+    analysis:                   # AnalysisTemplate creati a parte
+      templates: [{ templateName: ailadoc-success-rate }]
+```
+
+Con più repliche (volume `ReadWriteMany` + Postgres) i passi `setWeight` spostano davvero una parte dei pod; con `canary.trafficRouting.nginx.enabled: true` il traffico viene diviso da ingress-nginx: il chart crea il Service `<nome>-canary` e Argo genera l'ingress canary a partire da quello del chart.
+
+**Blue/green** (`rollout.strategy: blueGreen`): la nuova versione parte accanto a quella attiva, raggiungibile dal Service `<nome>-preview`, e riceve il traffico alla promozione (`autoPromotionEnabled`, `autoPromotionSeconds`, analisi `prePromotionAnalysis`/`postPromotionAnalysis`). Richiede un volume `ReadWriteMany` o `persistence.enabled: false`: con `ReadWriteOnce` il chart si ferma con un errore, come per il canary con `trafficRouting`.
+
+Passando da `Deployment` a `Rollout` (o viceversa) con `helm upgrade`, Helm elimina un oggetto e crea l'altro: il pod viene ricreato, con una breve interruzione come in un deploy `Recreate`. I Service `-canary`/`-preview` sono esclusi dal ServiceMonitor per non duplicare le metriche.
 
 ## Sicurezza del pod
 
@@ -227,6 +267,12 @@ Senza Prometheus Operator: `metrics.scrapeAnnotations: true` aggiunge al pod le 
 | `app.maxUploadMb` | `100` | allinealo all'annotazione `proxy-body-size` dell'ingress |
 | `app.officePreview` | `true` | anteprima PowerPoint/Word (LibreOffice) |
 | `app.seedSampleDocs` | `false` | copia la guida d'esempio se il volume è vuoto |
+| `rollout.enabled` | `true` | `Rollout` di Argo Rollouts al posto del `Deployment` (richiede le CRD) |
+| `rollout.strategy` | `canary` | `canary` oppure `blueGreen` |
+| `rollout.canary.steps` / `analysis` | `setWeight: 100` + pausa 2m / `{}` | passi e analisi del canary |
+| `rollout.canary.maxSurge` / `maxUnavailable` | `25%` / `0` | ignorati con volume `ReadWriteOnce` (0 / 1) |
+| `rollout.canary.trafficRouting.nginx.enabled` | `false` | traffico diviso da ingress-nginx (volume RWX) |
+| `rollout.blueGreen.*` | auto-promozione, preview Service | strategia blue/green (volume RWX) |
 | `persistence.size` / `storageClass` / `existingClaim` | `10Gi` / default / `""` | volume dati |
 | `branding.configMapName` | `""` | loghi da ConfigMap |
 | `ingress.*` | nginx, `docs.example.com` | esposizione |

@@ -15,6 +15,59 @@ fullnameOverride: ""
 # Con SQLite e un volume ReadWriteOnce deve restare 1 (vedi README del chart).
 replicaCount: 1
 
+# ---------------------------------------------------------------------------
+# Argo Rollouts: con enabled: true il chart crea un Rollout (argoproj.io/v1alpha1)
+# al posto del Deployment. Servono il controller e le CRD di Argo Rollouts nel cluster.
+# enabled: false = Deployment classico.
+rollout:
+  enabled: true
+  # canary | blueGreen
+  strategy: canary
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  # Annulla il rollout (torna alla versione stabile) se supera progressDeadlineSeconds
+  progressDeadlineAbort: false
+  annotations: {}
+  canary:
+    # Con volume ReadWriteOnce il chart usa sempre maxSurge 0 / maxUnavailable 1 (il vecchio
+    # pod si ferma prima che parta il nuovo, come Recreate) e ignora questi due valori.
+    maxSurge: "25%"
+    maxUnavailable: 0
+    # Passi del rollout ([] = promozione immediata). Con 1 replica il canary è "tutto o niente":
+    # il nuovo pod sostituisce il vecchio e la pausa è la finestra in cui osservarlo e,
+    # se serve, fare "kubectl argo rollouts abort" per tornare alla versione stabile.
+    steps:
+      - setWeight: 100
+      - pause: {duration: 2m}
+    # Esempio con più repliche (volume ReadWriteMany + Postgres):
+    #   - setWeight: 20
+    #   - pause: {}              # attende "kubectl argo rollouts promote"
+    #   - setWeight: 50
+    #   - pause: {duration: 5m}
+    # Analisi in background con AnalysisTemplate esistenti, es.:
+    #   analysis:
+    #     templates: [{templateName: ailadoc-success-rate}]
+    #     startingStep: 1
+    analysis: {}
+    trafficRouting:
+      # Suddivide il traffico con ingress-nginx: crea il Service <nome>-canary e Argo genera
+      # l'ingress canary. Richiede ingress.enabled e un volume ReadWriteMany.
+      nginx:
+        enabled: false
+        additionalIngressAnnotations: {}
+  # Richiede un volume ReadWriteMany (o persistence.enabled: false): vecchia e nuova versione
+  # restano attive insieme.
+  blueGreen:
+    autoPromotionEnabled: true
+    # Promozione automatica dopo N secondi (0 = subito, se autoPromotionEnabled)
+    autoPromotionSeconds: 0
+    scaleDownDelaySeconds: 30
+    # Service <nome>-preview verso la nuova versione prima della promozione
+    previewService:
+      enabled: true
+    prePromotionAnalysis: {}
+    postPromotionAnalysis: {}
+
 app:
   name: AIladoc
   companyName: ""

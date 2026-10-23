@@ -14,6 +14,13 @@ Chi non ha nessuno di questi ruoli vede la pagina di accesso negato.
 
 Documenti e loghi stanno nel volume montato su /data:
   kubectl -n {{ .Release.Namespace }} cp ./docs/. $(kubectl -n {{ .Release.Namespace }} get pod -l app.kubernetes.io/instance={{ .Release.Name }} -o jsonpath='{.items[0].metadata.name}'):/data/docs/
+{{- if .Values.rollout.enabled }}
+
+Deploy gestito da Argo Rollouts (strategia {{ .Values.rollout.strategy }}), richiede il plugin kubectl argo rollouts:
+  kubectl argo rollouts -n {{ .Release.Namespace }} get rollout {{ include "ailadoc.fullname" . }} --watch
+  kubectl argo rollouts -n {{ .Release.Namespace }} promote {{ include "ailadoc.fullname" . }}   # passo successivo
+  kubectl argo rollouts -n {{ .Release.Namespace }} abort {{ include "ailadoc.fullname" . }}     # torna alla versione stabile
+{{- end }}
 {{- if not .Values.ingress.enabled }}
 
 Accesso senza ingress:

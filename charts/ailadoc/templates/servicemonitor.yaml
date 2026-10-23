@@ -13,6 +13,11 @@ spec:
   selector:
     matchLabels:
       {{- include "ailadoc.selectorLabels" . | nindent 6 }}
+    # esclude i Service canary/preview di Argo Rollouts (metriche duplicate)
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: NotIn
+        values: [canary, preview]
   namespaceSelector:
     matchNames: [{{ .Release.Namespace }}]
   endpoints:

@@ -282,6 +282,8 @@ helm upgrade --install docs ./charts/ailadoc -n docs --create-namespace -f my-va
 
 Valori minimi: `image.repository`, `keycloak.url`, `keycloak.clientSecret` e l'host dell'ingress. In alternativa a `keycloak.*` puoi fornire un Secret già esistente con `secrets.existingSecret` (chiavi elencate nel README del chart).
 
+Il deploy usa di default un `Rollout` di **Argo Rollouts** (canary) al posto del `Deployment`: servono le CRD di Argo Rollouts nel cluster, oppure `rollout.enabled: false` per il `Deployment` classico (vedi il [README del chart](charts/ailadoc/README.md#argo-rollouts)).
+
 L'immagine si costruisce da **`docker/Dockerfile`** con la **radice del progetto come contesto** (copia `app/`, `sample-docs/` e `requirements.txt`); le esclusioni dal contesto sono in `docker/Dockerfile.dockerignore`. Serve BuildKit, attivo di default da Docker 23. Il workflow `.github/workflows/docker-publish.yml` fa lo stesso a ogni tag e pubblica `meticulo/ailadoc:<tag>` su Docker Hub.
 
 Immagine più leggera, senza LibreOffice (circa 400 MB in meno, niente anteprima di PowerPoint e Word):

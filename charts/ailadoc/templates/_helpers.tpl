@@ -63,3 +63,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "ailadoc.caMounted" -}}
 {{- if or .Values.keycloak.caBundle.configMapName .Values.keycloak.caBundle.secretName }}true{{ end }}
 {{- end }}
+
+{{/* "true" se il volume dati è ReadWriteOnce: due pod non possono usarlo insieme */}}
+{{- define "ailadoc.rwo" -}}
+{{- if and .Values.persistence.enabled (has "ReadWriteOnce" .Values.persistence.accessModes) }}true{{ end }}
+{{- end }}
+
+{{- define "ailadoc.validateReplicas" -}}
+{{- if and (gt (int .Values.replicaCount) 1) (include "ailadoc.rwo" .) }}
+{{- fail "replicaCount > 1 richiede un volume ReadWriteMany (persistence.accessModes) e databaseUrl verso Postgres: con SQLite su ReadWriteOnce usa 1 replica." }}
+{{- end }}
+{{- end }}

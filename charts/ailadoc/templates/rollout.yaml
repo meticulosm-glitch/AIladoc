@@ -1,0 +1,89 @@
+{{- if .Values.rollout.enabled }}
+{{- include "ailadoc.validateReplicas" . }}
+{{- $r := .Values.rollout -}}
+{{- $fullname := include "ailadoc.fullname" . -}}
+{{- $rwo := include "ailadoc.rwo" . -}}
+{{- if not (has $r.strategy (list "canary" "blueGreen")) }}
+{{- fail "rollout.strategy deve essere canary oppure blueGreen" }}
+{{- end }}
+{{- $nginx := and (eq $r.strategy "canary") $r.canary.trafficRouting.nginx.enabled -}}
+{{- if and $rwo (or (eq $r.strategy "blueGreen") $nginx) }}
+{{- fail "rollout blueGreen e canary con trafficRouting tengono attivi vecchi e nuovi pod insieme: servono un volume ReadWriteMany (persistence.accessModes) e databaseUrl verso Postgres, oppure usa canary senza trafficRouting." }}
+{{- end }}
+{{- if and $nginx (not .Values.ingress.enabled) }}
+{{- fail "rollout.canary.trafficRouting.nginx richiede ingress.enabled: true" }}
+{{- end }}
+# Deploy progressivo con Argo Rollouts (sostituisce il Deployment; rollout.enabled: false per tornare al Deployment)
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "ailadoc.labels" . | nindent 4 }}
+  {{- with $r.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ $r.revisionHistoryLimit }}
+  progressDeadlineSeconds: {{ $r.progressDeadlineSeconds }}
+  {{- if $r.progressDeadlineAbort }}
+  progressDeadlineAbort: true
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ailadoc.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "ailadoc.podTemplate" . | nindent 4 }}
+  strategy:
+    {{- if eq $r.strategy "canary" }}
+    canary:
+      {{- if $rwo }}
+      # volume RWO: il vecchio pod si ferma prima che parta il nuovo (come Recreate)
+      maxSurge: 0
+      maxUnavailable: 1
+      {{- else }}
+      maxSurge: {{ $r.canary.maxSurge }}
+      maxUnavailable: {{ $r.canary.maxUnavailable }}
+      {{- end }}
+      {{- if $nginx }}
+      stableService: {{ $fullname }}
+      canaryService: {{ $fullname }}-canary
+      trafficRouting:
+        nginx:
+          stableIngress: {{ $fullname }}
+          {{- with $r.canary.trafficRouting.nginx.additionalIngressAnnotations }}
+          additionalIngressAnnotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
+      {{- with $r.canary.analysis }}
+      analysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $r.canary.steps }}
+      steps:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- else }}
+    blueGreen:
+      activeService: {{ $fullname }}
+      {{- if $r.blueGreen.previewService.enabled }}
+      previewService: {{ $fullname }}-preview
+      {{- end }}
+      autoPromotionEnabled: {{ $r.blueGreen.autoPromotionEnabled }}
+      {{- with $r.blueGreen.autoPromotionSeconds }}
+      autoPromotionSeconds: {{ . }}
+      {{- end }}
+      scaleDownDelaySeconds: {{ $r.blueGreen.scaleDownDelaySeconds }}
+      {{- with $r.blueGreen.prePromotionAnalysis }}
+      prePromotionAnalysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $r.blueGreen.postPromotionAnalysis }}
+      postPromotionAnalysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+{{- end }}

@@ -2,10 +2,11 @@ apiVersion: v2
 name: ailadoc
 description: Visualizzatore di documentazione con login Keycloak (OIDC) e permessi per ruolo
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.1.0"
 keywords:
   - documentation
   - markdown
   - keycloak
   - oidc
+  - argo-rollouts
