@@ -36,6 +36,7 @@ PATHS = {
     "external": '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
     "menu": '<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>',
     "x": '<path d="M6 6l12 12"/><path d="M18 6 6 18"/>',
+    "paperclip": '<path d="m20 11.5-8.1 8.1a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/>',
     "image-up": '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M12 16v-6"/><path d="m9 12.5 3-3 3 3"/>',
     "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     "move": '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',

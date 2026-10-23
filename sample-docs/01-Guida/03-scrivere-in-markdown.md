@@ -48,6 +48,26 @@ flowchart LR
   C -->|editor| E[Modifica]
 ```
 
+## Immagini
+
+Nell'editor il pulsante **immagine** della barra chiede la dimensione (*Piccola*, *Media* o *Grande*) e poi il file; puoi anche trascinare o incollare un'immagine nel testo. Il file viene salvato nella cartella della pagina. Per cambiare la dimensione in seguito passa il mouse sull'immagine nell'anteprima, oppure metti il cursore sull'immagine nel testo e riapri il pulsante.
+
+Nel Markdown la dimensione è una classe tra graffe, subito dopo l'immagine:
+
+```markdown
+![Schema della rete](schema.png){ .img-piccola }
+![Schema della rete](schema.png){ .img-media }
+![Schema della rete](schema.png){ .img-grande }
+```
+
+| Classe | Larghezza |
+|--------|-----------|
+| `.img-piccola` | circa un terzo della pagina: due o tre stanno sulla stessa riga |
+| `.img-media` | circa due terzi della pagina |
+| `.img-grande` | tutta la larghezza |
+
+Senza classe l'immagine resta alla sua dimensione naturale, mai più larga della pagina.
+
 ## Altro
 
 Testo ==evidenziato==, ~~barrato~~, tasti ++ctrl+alt+del++, note a piè di pagina[^1].

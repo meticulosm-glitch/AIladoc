@@ -4,7 +4,7 @@ from __future__ import annotations
 import html
 import posixpath
 from typing import Callable
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import markdown
 import nh3
@@ -79,7 +79,9 @@ def _is_relative(url: str) -> bool:
 def resolve_link(doc_dir: str, url: str) -> tuple[str, str] | None:
     """Ritorna (percorso_relativo_risolto, frammento) o None se esce dalla radice."""
     parts = urlsplit(url)
-    target = posixpath.normpath(posixpath.join(doc_dir, parts.path)) if parts.path else ""
+    # il percorso nel Markdown è URL-encoded (foto%20uno.png): va decodificato, altrimenti
+    # il quote() successivo lo codifica due volte (foto%2520uno.png) e il file non si trova
+    target = posixpath.normpath(posixpath.join(doc_dir, unquote(parts.path))) if parts.path else ""
     if target == ".":
         target = ""
     if target.startswith(".."):

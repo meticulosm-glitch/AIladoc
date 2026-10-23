@@ -247,6 +247,10 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .md-content ul, .md-content ol { padding-left: 1.5em; }
 .md-content li + li { margin-top: .25em; }
 .md-content img { max-width: 100%; height: auto; border-radius: 8px; }
+/* Dimensioni scelte nell'editor: ![](foto.png){ .img-piccola } — sintassi attr_list, come MkDocs Material */
+.md-content img.img-piccola { width: 32%; min-width: min(160px, 100%); }
+.md-content img.img-media { width: 62%; min-width: min(260px, 100%); }
+.md-content img.img-grande { width: 100%; }
 .md-content blockquote { border-left: 3px solid var(--border-strong); padding: .2em 0 .2em 1em; color: var(--text-2); margin-left: 0; }
 .md-content code { font-size: .88em; background: var(--code-bg); padding: .12em .38em; border-radius: 5px; }
 .md-content pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 9px; padding: 14px 16px; overflow: auto; font-size: 13.5px; line-height: 1.55; }
@@ -369,6 +373,23 @@ audio.media { background: transparent; padding: 20px; }
 .panes textarea { border: 0; border-radius: 0; resize: none; height: 100%; padding: 18px 20px; font: 14px/1.65 ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--surface); outline: none !important; }
 .preview-pane { overflow: auto; padding: 18px 26px; border-left: 1px solid var(--border); background: var(--bg); }
 .help { margin-top: 10px; }
+/* Editor: immagini (menu dimensioni e barra di ridimensionamento sull'anteprima) */
+.toolbar .tb-img-btn { display: inline-flex; align-items: center; gap: 3px; padding: 0 5px 0 8px; }
+.tb-img-caret { font-size: 9px; opacity: .7; }
+.tb-img-list { width: 280px; }
+.toolbar .tb-img-item small { display: block; font-size: 12px; color: var(--muted); }
+.toolbar .tb-img-item[aria-checked="true"]::after { content: "✓"; margin-left: auto; color: var(--accent); font-weight: 700; }
+.size-glyph { flex: none; display: flex; width: 30px; height: 20px; padding: 2px; border: 1.5px solid var(--border-strong); border-radius: 4px; }
+.size-glyph i { display: block; height: 100%; border-radius: 2px; background: var(--k-image); opacity: .75; }
+.size-glyph-piccola i { width: 32%; } .size-glyph-media i { width: 62%; } .size-glyph-grande i { width: 100%; }
+.tb-img-hint { margin: 6px 8px 4px; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.editing .preview-pane img[data-img-key] { cursor: pointer; }
+.editing .preview-pane img[data-img-key]:hover, .editing .preview-pane img.img-target { outline: 2px solid var(--accent); outline-offset: 2px; }
+.img-size-bar { position: fixed; z-index: 40; display: flex; gap: 2px; padding: 3px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.img-size-bar[hidden] { display: none; }
+.img-size-bar button { height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.img-size-bar button:hover { background: var(--surface-2); color: var(--text); }
+.img-size-bar button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
 /* ---------- gate (deny / login / errori) ---------- */
 .centered .main { display: grid; place-items: center; min-height: calc(100vh - var(--topbar-h)); padding: 24px 16px; }

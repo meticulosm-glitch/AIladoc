@@ -4,7 +4,7 @@ Portale di documentazione aziendale, containerizzato. Si accede con l'account **
 
 - Pagine **Markdown** (compatibili MkDocs Material) organizzate in **cartelle e sottocartelle**, più allegati con un'icona per tipo: PDF, PowerPoint, Excel/CSV, Word, immagini, video, archivi.
 - **Anteprime nel browser**: PDF nativo, Excel e CSV come tabella, PowerPoint e Word convertiti in PDF da LibreOffice.
-- **Editor** con anteprima affiancata e **creazione rapida** di pagine, cartelle e intere strutture.
+- **Editor** con anteprima affiancata, **immagini** in tre dimensioni (piccola, media, grande) e **creazione rapida** di pagine, cartelle e intere strutture.
 - **Permessi** per cartella o per documento, basati su ruoli Keycloak e gruppi locali.
 - **Controllo password**: segnala password, PIN, token e chiavi scritti in chiaro nei documenti (anche dentro PDF, Word ed Excel), chiede conferma prima di salvarli e li oscura in ricerca e assistente.
 - Assistente **AIla**: trova i documenti partendo da una domanda scritta a parole proprie; con un LLM configurato risponde citando le fonti.

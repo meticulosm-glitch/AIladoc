@@ -38,8 +38,13 @@
     <button type="button" data-md="link" title="Link">🔗</button>
     <button type="button" data-md="table" title="Tabella">▦</button>
     <button type="button" data-md="note" title="Riquadro nota">!</button>
-    <button type="button" data-md="attach" title="Allega file o immagine">{{ icon('image-up', size=16) }}</button>
+    <div class="tb-insert tb-img" data-img-menu>
+      <button type="button" class="tb-img-btn" aria-haspopup="true" aria-expanded="false" title="Immagine: scegli la dimensione e caricala">{{ icon('image', size=16) }}<span class="tb-img-caret" aria-hidden="true">▾</span></button>
+      <div class="tb-insert-list tb-img-list" role="menu" aria-label="Immagine" hidden></div>
+    </div>
+    <button type="button" data-md="attach" title="Allega file (PDF, Excel, Word…)">{{ icon('paperclip', size=16) }}</button>
     <input type="file" id="attach-input" multiple hidden>
+    <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/bmp" multiple hidden>
     {% if plugin_snippets %}<span class="tb-sep"></span>
     <div class="tb-insert" data-insert-menu>
       <button type="button" class="tb-insert-btn" aria-haspopup="true" aria-expanded="false" title="Inserisci macro: tabelle, diagrammi, pannelli, card…">{{ icon('puzzle', size=16) }} Inserisci <span aria-hidden="true">▾</span></button>
@@ -68,9 +73,9 @@
     <textarea name="content" id="md-input" spellcheck="true" aria-label="Contenuto Markdown">{{ content }}</textarea>
     <div class="md-content preview-pane" id="md-preview" aria-live="polite"></div>
   </div>
-  <p class="muted small help">Markdown con le estensioni di MkDocs Material: <code>!!! note</code> per i riquadri, <code>```mermaid</code> per i diagrammi, <code>- [ ]</code> per le checklist. I file allegati vengono salvati nella stessa cartella della pagina.
+  <p class="muted small help">Markdown con le estensioni di MkDocs Material: <code>!!! note</code> per i riquadri, <code>```mermaid</code> per i diagrammi, <code>- [ ]</code> per le checklist. I file allegati vengono salvati nella stessa cartella della pagina; le immagini hanno tre dimensioni (piccola, media, grande): scegli dal pulsante immagine o passa il mouse su un'immagine nell'anteprima.
     {% if plugin_snippets %}Macro, tabelle dinamiche e diagrammi: menu <strong>Inserisci</strong> e <a href="/plugins" target="_blank">guida alle macro</a>. Incollando celle da Excel ottieni una tabella.{% endif %}</p>
   {% if plugin_snippets %}<script type="application/json" id="plugin-data">{{ {"snippets": plugin_snippets, "files": plugin_files, "drawio": drawio_editor}|tojson }}</script>{% endif %}
 </form>
 {% endblock %}
-{% block scripts %}<script src="/static/js/editor.js?v=4"></script>{% if plugin_snippets %}<script src="/static/js/drawio-edit.js?v=1"></script><script src="/static/js/editor-plugins.js?v=1"></script>{% endif %}<script src="/static/js/secrets.js?v=1"></script><script src="/static/js/mermaid-init.js" defer></script>{% endblock %}
+{% block scripts %}<script src="/static/js/editor.js?v=5"></script>{% if plugin_snippets %}<script src="/static/js/drawio-edit.js?v=1"></script><script src="/static/js/editor-plugins.js?v=1"></script>{% endif %}<script src="/static/js/secrets.js?v=1"></script><script src="/static/js/mermaid-init.js" defer></script>{% endblock %}
